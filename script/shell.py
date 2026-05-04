@@ -30,7 +30,7 @@ class FibonacciModDataset(Dataset):
     def generate_fib_sequence(self, mod):
         all_pairs = [(a, b) for a in range(mod) for b in range(mod)]
 
-        train_pairs = all_pairs[:int(0.3 * len(all_pairs))] 
+        train_pairs = all_pairs[:int(0.2 * len(all_pairs))] 
     
         sequences = []
 
@@ -90,16 +90,10 @@ class MinimalTransformer(nn.Module):
         B, T = tokens.shape
         pos = torch.arange(T, device=tokens.device)              
         x = self.token_embed(tokens) + self.pos_embed(pos).unsqueeze(0)    
-
-        # mask = torch.full((T, T), float('-inf'), device=tokens.device)
-        # for i in range(T):
-        #     for j in range(max(0, i-2), i+1):
-        #         mask[i, j] = 0.0
-
-        # attn_mask = torch.triu(torch.ones(T, T, device=tokens.device) * float('-inf'), diagonal=1)
+        attn_mask = torch.triu(torch.ones(T, T, device=tokens.device) * float('-inf'), diagonal=1)
      
         for attn, mlp in zip(self.layers, self.mlps):
-            attn_out, _ = attn(x, x, x)
+            attn_out, _ = attn(x, x, x, attn_mask=attn_mask)
             x = x + attn_out
             x = x + mlp(x) 
         return self.out_proj(x)
@@ -120,7 +114,7 @@ checkpoint_dir = 'checkpoints/temp'
 file_name = f'sus_6.pth'
 full_path  = os.path.join(checkpoint_dir, file_name)
 
-def train_model(model, dataloader, test_loader, epochs=12, lr=0.001, weight_decay=4):
+def train_model(model, dataloader, test_loader, epochs=12, lr=0.001, weight_decay=1):
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     loss_fn = nn.CrossEntropyLoss()

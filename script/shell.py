@@ -239,7 +239,7 @@ train_accuracy = []
 test_accuracy = []
 
 checkpoint_dir = 'checkpoints/temp'
-file_name = f'sus_9.pth'
+file_name = f'sus_8_1000_batch.pth'
 full_path  = os.path.join(checkpoint_dir, file_name)
 
 def train_model(model, dataloader, test_loader, epochs=12, lr=0.001, weight_decay=0.07):
@@ -396,8 +396,10 @@ def execute():
     #train_ds, test_ds = random_split(generated_ds, [train_size, test_size])
     test_ds = GenerateEvulatePairs(train_ds, vocab_size, num_samples=500)
 
-    train_loader = DataLoader(train_ds, batch_size=len(train_ds), shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True, prefetch_factor=4)
-    test_loader = DataLoader(test_ds, batch_size=len(test_ds), num_workers=8, pin_memory=True, persistent_workers=True, prefetch_factor=4)
+
+
+    train_loader = DataLoader(train_ds, batch_size=1000, shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True, prefetch_factor=4)
+    test_loader = DataLoader(test_ds, batch_size=1000, num_workers=8, pin_memory=True, persistent_workers=True, prefetch_factor=4)
    
     model = MinimalTransformer(vocab_size=vocab_size).to(device)
 

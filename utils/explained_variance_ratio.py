@@ -31,8 +31,11 @@ def explained_variance(full_path, model, pc):
 
     pca = PCA(n_components=pc) 
 
-    pca.fit(X)
-
+    try:
+        pca.fit(X)
+    except Exception:
+        pca = PCA(n_components=None)
+        pca.fit(X)
 
     explained_variance_ratio = pca.explained_variance_ratio_
 

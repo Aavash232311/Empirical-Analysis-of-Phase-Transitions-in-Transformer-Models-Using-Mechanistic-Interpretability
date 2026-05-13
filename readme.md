@@ -14,3 +14,30 @@ xt+1 = xt + xt−1 (mod n).
 Each token belongs to the voculabulary:
 
 Zn = {0, 1, . . . , n − 1}.
+
+
+For this task, the correct next token depends only on the last two tokens, not on the whole prexix.
+
+The sufficient state is
+
+st = (xt−1 , xt ) ∈ Z^2 n
+
+One we know, st = (a, b), the correct target is
+
+y = a + b (mod n)
+
+So the natural "space of states" is not the 1D vocabulary Zn but the 2-D discrete tours.
+
+Z^2n = {(a, b) : a, b ∈ Zn }.
+
+
+This point is essential. If we want to study how the network learns the rule.
+
+
+To evaluate the model at a fixed training step, we would like to know what it predicts for every
+possible pair (a, b). Because the recurrence is deterministic, we can construct a valid prefix ending
+in (a, b) by running the recurrence backward:
+xt−2 = xt − xt−1 (mod n).
+
+Repeating this allows us to build one valid probe sequence for each of the n2 states.
+So for every checkpoint in training, we can build a table of model outputs indexed by (a, b).

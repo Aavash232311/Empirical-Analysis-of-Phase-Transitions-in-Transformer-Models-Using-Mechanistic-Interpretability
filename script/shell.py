@@ -166,19 +166,19 @@ class GenerateEvulatePairs(Dataset):
         return self.samples[idx]
 
 
-class MLP(nn.Module):
-    def __init__(self, d_model, hidden_layer):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(d_model, hidden_layer),
-            nn.GELU(),
-            nn.Linear(hidden_layer, hidden_layer),
-            nn.GELU(),
-            nn.Linear(hidden_layer, d_model)
-        )
+# class MLP(nn.Module):
+#     def __init__(self, d_model, hidden_layer):
+#         super().__init__()
+#         self.net = nn.Sequential(
+#             nn.Linear(d_model, hidden_layer),
+#             nn.GELU(),
+#             nn.Linear(hidden_layer, hidden_layer),
+#             nn.GELU(),
+#             nn.Linear(hidden_layer, d_model)
+#         )
 
-    def forward(self, x):
-        return self.net(x)
+#     def forward(self, x):
+#         return self.net(x)
 
 
 # class MLP(nn.Module):
@@ -203,12 +203,6 @@ class MinimalTransformer(nn.Module):
             for _ in range(num_layers)
         ])
 
-        self.mlps = nn.ModuleList([
-            MLP(d_model, hidden_layer=512)
-            for _ in range(num_layers)
-        ])
-
-
         self.out_proj = nn.Linear(d_model, vocab_size)
         self.vocab_size = vocab_size
         # self.input_proj = nn.Linear(2, d_model)
@@ -220,10 +214,10 @@ class MinimalTransformer(nn.Module):
         x = self.token_embed(tokens) + self.pos_embed(pos).unsqueeze(0)   
 
         attn_mask = torch.triu(torch.ones(T, T, device=tokens.device) * float('-inf'), diagonal=1)
-        for attn, mlp in zip(self.layers, self.mlps):
+        # Here this is supposed to be without MLP to experiment
+        for attn in self.layers:
             attn_out, _ = attn(x, x, x, attn_mask=attn_mask)
             x = x + attn_out
-            x = x + mlp(x)
         return self.out_proj(x)
     
     def get_embeddings(self):
@@ -238,8 +232,8 @@ epoch_masses = []
 train_accuracy = []
 test_accuracy = []
 
-checkpoint_dir = 'checkpoints/temp'
-file_name = f'sus_8_1000_batch.pth'
+checkpoint_dir = 'checkpoints/proper_report'
+file_name = f'batch_1000_dimension_128_head_4_wd_0.09_without_mlp.pth'
 full_path  = os.path.join(checkpoint_dir, file_name)
 
 def train_model(model, dataloader, test_loader, epochs=12, lr=0.001, weight_decay=0.07):

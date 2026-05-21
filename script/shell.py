@@ -165,7 +165,7 @@ class GenerateEvulatePairs(Dataset):
     def __getitem__(self, idx):
         return self.samples[idx]
 
-
+# old- with GELU
 # class MLP(nn.Module):
 #     def __init__(self, d_model, hidden_layer):
 #         super().__init__()
@@ -232,7 +232,7 @@ epoch_masses = []
 train_accuracy = []
 test_accuracy = []
 
-checkpoint_dir = 'checkpoints/proper_report'
+checkpoint_dir = 'checkpoints/bin'
 file_name = f'batch_1000_dimension_128_head_4_wd_0.09_without_mlp.pth'
 full_path  = os.path.join(checkpoint_dir, file_name)
 

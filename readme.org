@@ -1,0 +1,11 @@
+* Abstract
+
+Neural network architectures with algorithmic tasks are known to show late generalisation after a long period of overfitting. We study that phenomenon by feeding the transformer a Fibonacci modulo sequence. We aimed to analyse this pattern using mechanistic interpretability and better understand it. We identified that the model seems to generalise after prolonged overfitting, that the mathematical nature of the Pisano period causes a data leak in the Fibonacci modulo, and that this affects the training and evaluation of the transformer. We also analysed and experimented with the transformer model by disassembling its different components to see if late generalisation still occurs. Our study concludes the behaviour of the transformer on types of algorithmic tasks like Fibonacci modulo and modular addition, and how different components of a transformer architecture contribute to such behaviour.
+
+
+** Introduction
+
+Neural network architecture exhibits a phenomenon commonly known as grokking after a long period of overfitting. This effect is commonly caused in an algorithmic task in which the model can learn to generalise instead of memorising the problem. In our study, we analyse different types of problem sets like Fibonacci Modulo along with modular addition. The periodic mathematical nature of the Fibonacci modulo problem causes a natural data leak due to the Pisano period, where modular addition tasks are straightforward when feeding the transformer model with seen and unseen pairs in training and evaluation sets. We also experiment with different components of a transformer architecture to analyse the contrubition on grokking.
+
+** Setup
+We train our transformer model to predict the next output on Fiboachi modulo and modular addition tasks. We have a vocabulary size of 113, training and testing dataset splitting in such a way that there is no overlap between those in the case of modular addition. Our transformer model has a dimension of 128 with 4 heads, with learned embeddings. We are using the AdamW optimiser with a learning rate of 0.01 and weight decay of 0.09. We define a multi-layer perceptron with one hidden layer of 512 neurons and ReLU activation.

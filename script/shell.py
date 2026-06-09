@@ -240,7 +240,7 @@ train_accuracy = []
 test_accuracy = []
 
 checkpoint_dir = 'checkpoints/bin'
-file_name = f'batch_full_dimension_128_head_4_wd_0.09_with_mlp.pth'
+file_name = f'batch_full_dimension_128_head_4_wd_0.09_with_mlp_wd_1.pth'
 full_path  = os.path.join(checkpoint_dir, file_name)
 
 def train_model(model, dataloader, test_loader, epochs=12, lr=0.001, weight_decay=0.07):
@@ -406,7 +406,7 @@ def execute():
     # ''' 
     # We have made the model get high accuracy on limited possible resources, now we need to save the checkpoint in order to save time.
     # '''
-    weight_decay = 0.09
+    weight_decay = 1
 
     # def unique_pairs(dataset):
     #     pair_counters = set()

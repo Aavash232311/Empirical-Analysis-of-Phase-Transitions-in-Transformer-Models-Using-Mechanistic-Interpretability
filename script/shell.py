@@ -181,17 +181,17 @@ class GenerateEvulatePairs(Dataset):
 #         return self.net(x)
 
 
-# class MLP(nn.Module):
-#     def __init__(self, d_model, hidden_layer):
-#         super().__init__()
-#         self.net = nn.Sequential(
-#             nn.Linear(d_model, hidden_layer),
-#             nn.ReLU(),
-#             nn.Linear(hidden_layer, d_model),
-#         )
+class MLP(nn.Module):
+    def __init__(self, d_model, hidden_layer):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(d_model, hidden_layer),
+            nn.ReLU(),
+            nn.Linear(hidden_layer, d_model),
+        )
 
-#     def forward(self, x):
-#         return self.net(x)
+    def forward(self, x):
+        return self.net(x)
 
 class MinimalTransformer(nn.Module):
     def __init__(self, vocab_size, d_model=128, n_heads=4, num_layers=1, max_seq_len=20):
@@ -202,6 +202,12 @@ class MinimalTransformer(nn.Module):
             nn.MultiheadAttention(d_model, n_heads, batch_first=True)
             for _ in range(num_layers)
         ])
+
+        self.mlps = nn.ModuleList([
+            MLP(d_model, hidden_layer=512)
+            for _ in range(num_layers)
+        ])
+  
 
         self.out_proj = nn.Linear(d_model, vocab_size)
         self.vocab_size = vocab_size
@@ -215,9 +221,10 @@ class MinimalTransformer(nn.Module):
 
         attn_mask = torch.triu(torch.ones(T, T, device=tokens.device) * float('-inf'), diagonal=1)
         # Here this is supposed to be without MLP to experiment
-        for attn in self.layers:
+        for attn, mlp in zip(self.layers, self.mlps):
             attn_out, _ = attn(x, x, x, attn_mask=attn_mask)
             x = x + attn_out
+            x = x + mlp(x)
         return self.out_proj(x)
     
     def get_embeddings(self):
@@ -233,7 +240,7 @@ train_accuracy = []
 test_accuracy = []
 
 checkpoint_dir = 'checkpoints/bin'
-file_name = f'batch_1000_dimension_128_head_4_wd_0.09_without_mlp.pth'
+file_name = f'batch_full_dimension_128_head_4_wd_0.09_with_mlp.pth'
 full_path  = os.path.join(checkpoint_dir, file_name)
 
 def train_model(model, dataloader, test_loader, epochs=12, lr=0.001, weight_decay=0.07):
@@ -338,7 +345,7 @@ def evaluate_model(model, dataloader, show_accuracy=False):
 
     with torch.no_grad():
         for x, y in dataloader:
-            x, y = x.to(device), y.to(device)
+            x, y = x.to(device, dtype=torch.long), y.to(device, dtype=torch.long)
             logits = model(x)
             pred = logits.argmax(dim=-1)
             loss = loss_fn(logits[:, 1:].reshape(-1, logits.size(-1)), y[:, 1:].reshape(-1)) 
@@ -391,9 +398,8 @@ def execute():
     test_ds = GenerateEvulatePairs(train_ds, vocab_size, num_samples=500)
 
 
-
-    train_loader = DataLoader(train_ds, batch_size=1000, shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True, prefetch_factor=4)
-    test_loader = DataLoader(test_ds, batch_size=1000, num_workers=8, pin_memory=True, persistent_workers=True, prefetch_factor=4)
+    train_loader = DataLoader(train_ds, batch_size=len(train_ds), shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True, prefetch_factor=4)
+    test_loader = DataLoader(test_ds, batch_size=len(test_ds), num_workers=8, pin_memory=True, persistent_workers=True, prefetch_factor=4)
    
     model = MinimalTransformer(vocab_size=vocab_size).to(device)
 
@@ -420,7 +426,6 @@ def execute():
 
     # common_factor = train_pairs & evulate_pairs # if common factor is zero, then it is a binary task, there force it is mathematically impossible to have non-repetance on the fib sequence we are generating.
     # print(f"Common factor {len(common_factor)}")
-
 
 
     train_model(model=model, dataloader=train_loader, epochs=epoch, test_loader=test_loader, weight_decay=weight_decay) 

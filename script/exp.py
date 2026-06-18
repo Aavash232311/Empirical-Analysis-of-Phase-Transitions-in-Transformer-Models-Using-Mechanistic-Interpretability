@@ -123,54 +123,46 @@ class FibonacciModDataset(Dataset):
 #         print(f"Unseen pairs {len(unseen)}")
 #         print(f"Seen pairs {len(pair_counters)}")
 
-
 class GenerateEvulatePairs(Dataset):
-
-    def __init__(self, dataset, mod, num_samples=1000):
-        self.dataset = dataset
+    def __init__(self, train_dataset, mod):
         self.mod = mod
+        self.seq_len = train_dataset.seq_len
+
+        # every adjacent (a, b) transition that appears anywhere in training,
+        # via zip(x, y) so the last transition isn't dropped
         pair_counters = set()
-        seq_len = len(self.dataset[0][0])
+        for x, y in train_dataset:
+            for xi, yi in zip(x.tolist(), y.tolist()):
+                pair_counters.add((xi, yi))
 
-        for a, b in self.dataset:
-            for i in range(seq_len-1):
-                x = a[i].item()
-                y = a[i+1].item()
-                pair_counters.add((x, y))
-
+        # starting pairs that never occurred as a transition during training
         all_pairs = {(a, b) for a in range(self.mod) for b in range(self.mod)}
         unseen = list(all_pairs - pair_counters)
 
-        seq_len = len(self.dataset[0][0])
         self.samples = []
-
-
-        """for a, b in unseen:
+        for a, b in unseen:
             seq = [a, b]
-            while len(seq) < seq_len + 1:
-                seq.insert(0, (seq[1] - seq[0]) % self.mod)  # since it is a backward loop
-
-            x = torch.tensor(seq[:-1], dtype=torch.long)
-            y = torch.tensor(seq[1:], dtype=torch.long)
-            self.samples.append((x, y))"""
-
-        for _ in range(num_samples):
-            idx = torch.randint(0, len(unseen)-1, (1,)).item()
-            a, b = unseen[idx]
-            seq = [a, b]
-            while len(seq) <= seq_len:
+            while len(seq) < self.seq_len:
                 seq.append((seq[-1] + seq[-2]) % self.mod)
 
-            x = torch.tensor(seq[:-1], dtype=torch.long)
-            y = torch.tensor(seq[1:], dtype=torch.long)
-            #print(x)
-            #print(y)
-            self.samples.append((x, y))
+            x_tensor = torch.tensor(seq[:-1], dtype=torch.long)
+            y_tensor = torch.tensor(seq[1:], dtype=torch.long)
+            self.samples.append((x_tensor, y_tensor))
 
-        print(f"Unseen pairs {len(unseen)}")
-        print(f"Seen pairs {len(pair_counters)}")
+        # transitions that actually occur once those eval sequences are generated
+        eval_pair_set = set()
+        for x, y in self.samples:
+            for xi, yi in zip(x.tolist(), y.tolist()):
+                eval_pair_set.add((xi, yi))
 
+        overlap = pair_counters & eval_pair_set
 
+        print(f"Total possible unique pairs: {mod * mod}")
+        print(f"Seen pairs (training transitions): {len(pair_counters)}")
+        print(f"Unseen starting pairs chosen: {len(unseen)}")
+        print(f"Pairs touched by eval sequences: {len(eval_pair_set)}")
+        print(f"Overlap: {len(overlap)}")
+        print(f"Seq len: {self.seq_len}")
 
     def __len__(self):
         return len(self.samples)
@@ -403,10 +395,10 @@ def execute():
     # )
 
 
-    seq_len=2
+    seq_len=11
     train_ds = FibonacciModDataset(mod=vocab_size, seq_len=seq_len)
 
-    test_ds = GenerateEvulatePairs(train_ds, vocab_size, num_samples=1000)
+    test_ds = GenerateEvulatePairs(train_ds, vocab_size)
 
 
     train_loader = DataLoader(train_ds, batch_size=len(train_ds), shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True, prefetch_factor=4)

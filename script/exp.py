@@ -233,7 +233,6 @@ class MinimalTransformer(nn.Module):
         pos = torch.arange(T, device=tokens.device)              
         x = self.token_embed(tokens) + self.pos_embed(pos).unsqueeze(0)   
 
-        # changed to 64PF
         attn_mask = torch.triu(torch.ones(T, T, device=tokens.device, dtype=x.dtype) * float('-inf'), diagonal=1)
         # Here this is supposed to be without MLP to experiment
         for attn, mlp in zip(self.layers, self.mlps):
@@ -413,7 +412,7 @@ def execute():
     train_loader = DataLoader(train_ds, batch_size=len(train_ds), shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True, prefetch_factor=4)
     test_loader = DataLoader(test_ds, batch_size=len(test_ds), shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True, prefetch_factor=4)
    
-    model = MinimalTransformer(vocab_size=vocab_size).to(device).double() # 64pf floating
+    model = MinimalTransformer(vocab_size=vocab_size).to(device).double()
 
     # ''' 
     # We have made the model get high accuracy on limited possible resources, now we need to save the checkpoint in order to save time.

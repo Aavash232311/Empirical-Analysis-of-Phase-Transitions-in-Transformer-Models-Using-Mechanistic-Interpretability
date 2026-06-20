@@ -1,0 +1,54 @@
+\documentclass{article}
+\usepackage{amsmath, amssymb, hyperref}
+\usepackage[margin=1in]{geometry}
+\title{Minimal Transformer Architecture and Modular Fibonacci Learning}
+\author{}
+\date{}
+\begin{document}
+\maketitle
+
+\section*{Architecture in \textit{A Mathematical Framework for Transformer Circuits}}
+
+The paper ``A Mathematical Framework for Transformer Circuits'' uses a minimal Transformer architecture for interpretability analysis. In particular, the authors simplify the standard Transformer design in several ways:
+
+\subsection*{Decoder-Only (No Encoder)}
+The model is essentially a language model that operates on a single sequence of tokens (no separate encoder-decoder structure). The analysis builds up from a ``zero-layer transformer'' (just direct token-to-token mapping for bigrams) to a one-layer and then a two-layer transformer for next-token prediction. All attention is self-attention over the single sequence (no encoder cross-attention).
+
+\subsection*{No MLP Feed-Forward Block}
+They omit the feed-forward network entirely, focusing on attention-only transformations. The one-layer Transformer described in the paper has only the token embedding, a self-attention mechanism, and the output projection. As the summary notes: ``they strip out the feed forward layer ... and are left with just the attention mechanism.'' This means each Transformer layer consists solely of (multi-head) attention plus the residual connection (no intermediate dense layer).
+
+\subsection*{Few Layers and Attention Heads}
+The architecture is kept very small. The paper discusses a one-layer attention-only Transformer, and then extends to a two-layer attention-only Transformer to investigate how multiple layers compose circuits. Even in these minimal models, they use multiple attention heads per layer to allow the model to capture different patterns. For example, the one-layer model described had 12 attention heads (with each head of dimension 64, for an embedding size of 768) in its single attention layer. In the two-layer case, a similar multi-head setup is used (they refer to heads by notation like ``head 0:7'' for layer 0, head 7 and ``head 1:3'' for layer 1, head 3). The key point is that the model is minimal in depth (only 1--2 layers) but still uses a small number of heads to distribute attention roles.
+
+\section*{Can a Minimal Attention-Only Transformer Learn Modular Fibonacci?}
+
+Given such a minimal Transformer architecture (decoder-only, no MLP, few layers/heads), we consider whether it can learn a modular Fibonacci sequence pattern. In a Fibonacci-mod-$N$ sequence, each next token is defined as the sum of the previous two tokens modulo $N$, i.e. 
+\[x_i = (x_{i-1} + x_{-2})\,\,\text{mod} \,N, \]
+with initial values $x_0 = x_1 = 1$.
+This is a simple deterministic algorithmic pattern. Key considerations include:
+
+\subsection*{Ability to Attend to the Two Relevant Prior Tokens}
+A decoder-only transformer can attend to previous positions in the sequence. Even a one-layer model with multi-head self-attention can, in principle, focus on the last two tokens. For example, one head could attend strongly to the token at position $n-1$ and another head to the token at $n-2$. With no feed-forward layer, the only way to combine information from these two tokens is via the attention mechanism and the output projection. The one-layer model sums the contributions of all heads into the residual stream. This means if one head injects a representation of token$_{n-1}$ and another injects token$_{n-2}$, their sum is available to influence the output for the next token.
+
+\subsection*{Expressiveness Without MLP}
+A potential concern is that modular addition is a non-linear operation (especially because of the modulo). Standard Transformers often use the MLP to perform nonlinear transformations on the combined attention output. Here we have only linear combinations (and the softmax weighting in attention). However, the model could still learn modular addition in a piecewise linear way. It might effectively learn a lookup table for the sum of two tokens mod $N$, encoded in the attention weights and output matrix. For small $N$, this is feasible: the model can memorize the addition table. Each pair of previous-two tokens $(i, j)$ has a deterministic next token $k = (i + j) \mod N$. The attention-only model can encode this mapping by tuning its parameters so that the correct output token’s logit is highest whenever the context ends in $(i, j)$. In fact, attention heads are capable of implementing lookup-table style behaviors (the paper shows one-layer attention heads mostly learning skip-gram tables of what follows what). Learning Fibonacci mod $N$ is analogous, except it must combine two tokens' information.
+
+\subsection*{Sufficiency of One Layer vs. Need for Two}
+A single-layer attention-only transformer might handle this pattern if properly parameterized, but it could be challenging. Without an MLP, the model has to do all computation in one linear-attention step. If one head attends to the last token and another to the second-last, their outputs still need to be combined to produce the correct next-token embedding. This combination is linear in the residual stream. It is possible for a linear combination to represent addition mod $N$ if the token embeddings and output weights are set cleverly. For example, the embeddings could be such that adding two embedding vectors (or a fixed linear combination of them) corresponds to the embedding of the sum. In practice, the model might converge to something like this or simply learn the mapping non-generatively (by rote). If one layer proves insufficient, a two-layer model could learn the task more easily: the first layer could copy information or perform partial addition, and the second layer could refine the result (similar to how two-layer models in the paper compose heads to implement more complex patterns like induction).
+
+\subsection*{Expectation}
+The Fibonacci mod $N$ rule is a simple algorithmic pattern, so even a minimal transformer should be capable of learning it for a given $N$. In fact, this is simpler than natural language patterns—there’s no ambiguity or long-range dependencies beyond two tokens. A one- or two-layer attention-only model with a few heads has enough capacity to represent this rule. The question is whether it can learn it from data efficiently without an MLP. Likely, yes for small $N$ (the model can memorize or infer the addition mapping). If $N$ is large, the model might struggle without an MLP because it has to represent a more complex function in its parameters. In summary, a minimal transformer is likely sufficient to learn modular Fibonacci for reasonably small moduli, but training might be slower or require more heads as $N$ grows. If the minimal model fails (e.g. for larger $N$ or longer sequences), adding a bit more capacity — such as a feed-forward layer for nonlinearity or an extra attention layer for multi-step composition — would be natural extensions.
+
+\section*{Potential Extensions}
+
+If the above minimal model struggles to learn the modular Fibonacci pattern, a few extensions could improve its capacity:
+
+\begin{itemize}
+  \item \textbf{Include a Feed-Forward Layer:} Adding an MLP after each attention sublayer (as in a standard Transformer) would give the model a non-linear component that might more naturally learn arithmetic operations like modular addition. The MLP could combine the two attended values in a non-linear way to compute the sum mod $N$. This increases the model’s expressiveness significantly (at the cost of more parameters).
+  \item \textbf{Increase Depth or Heads:} Using an additional attention layer (making it a two-layer model) or more attention heads can help the model compose operations. For example, a two-layer attention-only transformer can implement an addition in steps: perhaps the first layer focuses on capturing one of the addends and the second layer combines them (similar to how induction heads emerge in two-layer models to compose information across layers). More heads could allow the single layer to allocate one head per relevant token (one head attends the token at $n-1$, another attends $n-2$, etc., effectively partitioning the task).
+  \item \textbf{Train with Position Encodings or Relative Bias:} Since the Fibonacci rule always uses the two most recent tokens, the model should strongly attend to those. Ensuring the architecture knows ``distance'' or ``position'' (which we handled with positional embeddings) is important. In a minimal setting, one could also hard-code a bias for attending to the last two positions or use a relative positional embedding scheme to encourage looking at the immediate predecessors.
+\end{itemize}
+
+Overall, the minimal transformer architecture from the cited paper is a surprisingly potent learner for simple patterns. It forgoes the large MLP sub-networks and deep stacks of layers, yet by using attention heads it can still route and combine information from previous tokens. For a modular Fibonacci sequence, such a model is likely sufficient to learn the pattern for modest $N$, though it may effectively memorize the addition table. If the task complexity grows, introducing more layers or the feed-forward networks would likely be necessary to capture the function in a generalizable way. The provided PyTorch implementation offers a starting point for experimenting with this minimal architecture on synthetic sequence tasks like Fibonacci mod $N$.
+
+\end{document}

@@ -1,0 +1,922 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools,bm}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{microtype}
+
+\hypersetup{
+  colorlinks=true, linkcolor=blue, urlcolor=blue, citecolor=blue,
+  pdftitle={Diagnostic Metrics for the Grokking Transition},
+}
+
+\newcommand{\Zp}{\mathbb{Z}_p}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\C}{\mathbb{C}}
+\newcommand{\ii}{\mathrm{i}}
+\newcommand{\diag}{\mathrm{diag}}
+\newcommand{\E}{\mathbb{E}}
+
+\title{Diagnostic Metrics for the Grokking Phase Transition\\[4pt]
+\large Mathematical details, expected signatures, and counterfactual arguments\\
+for a Transformer trained on Fibonacci modulo $p$}
+\author{Pietro Dall'Olio --- Phase Transitions in Neural Networks project}
+\date{May 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Overview of the task and the grokking phenomenon}
+% ============================================================
+
+We train a decoder-only Transformer to predict the next token of a Fibonacci
+sequence modulo a prime $p$:
+\begin{equation}
+    x_{t+1} = x_t + x_{t-1} \pmod{p}.
+\end{equation}
+The vocabulary is $\Zp = \{0,1,\dots,p-1\}$.
+Following Nanda et al.\ (2023) we use $p = 113$ and train on a random
+30\% of all $p^2 = 12{,}769$ possible consecutive pairs $(a, b)$, evaluating
+on the held-out 70\%.
+
+\paragraph{The grokking signature.}
+The model typically undergoes two distinct phases:
+\begin{enumerate}[label=(\roman*)]
+    \item \textbf{Memorisation phase} --- training accuracy quickly reaches 100\%
+    while validation accuracy stays near chance $1/p \approx 0.9\%$.
+    The model has fit the training pairs without learning the underlying rule.
+    \item \textbf{Grokking} --- after many more gradient steps, validation accuracy
+    suddenly jumps to $\sim 100\%$.
+    The model has discovered the modular-addition structure.
+\end{enumerate}
+The five families of diagnostic plots described below are designed to detect and
+characterise this transition from the inside.
+
+% ============================================================
+\section{Loss and accuracy curves}
+\label{sec:loss}
+% ============================================================
+
+\subsection{Definitions}
+
+We evaluate cross-entropy loss and per-token accuracy, skipping position 0
+(where the Fibonacci rule is underdetermined from a single token):
+\begin{align}
+    \mathcal{L}_{\text{train/val}}
+    &= -\frac{1}{|\mathcal{D}|}\sum_{(x,y)\in\mathcal{D}}
+       \sum_{t=1}^{T-1} \log \text{softmax}(\ell_\theta(x_{\leq t}))_{y_t},\\
+    \text{Acc}_{\text{train/val}}
+    &= \frac{1}{|\mathcal{D}|(T-1)}
+       \sum_{(x,y)\in\mathcal{D}} \sum_{t=1}^{T-1}
+       \mathbf{1}\!\left[\arg\max_c \ell_\theta(c\mid x_{\leq t}) = y_t\right].
+\end{align}
+Both metrics are plotted on a \emph{log scale} for the loss axis to make the
+slow late-stage drop in validation loss visible.
+
+\subsection{Expected behaviour at grokking}
+
+\begin{itemize}
+    \item Training loss drops rapidly to near zero; training accuracy hits 100\%.
+    \item Validation loss stays near $\log p \approx 4.7$ nats for a long time
+    (random-chance prediction).
+    \item Then, at the grokking epoch $t_g$, validation loss drops sharply and
+    validation accuracy rises to $\sim 100\%$ in a window of a few hundred epochs.
+\end{itemize}
+
+\subsection{Counterfactual: pure memorisation, no grokking}
+
+If the model never generalises (e.g.\ weight decay is too small, training is
+stopped early, or model capacity is insufficient), the curves have a
+characteristic shape:
+\begin{itemize}
+    \item Train loss converges to $\approx 0$; train accuracy $\approx 100\%$.
+    \item Val loss \emph{stays} near $\log p$ indefinitely.
+    \item There is no gap closure: the train-val accuracy gap never narrows.
+\end{itemize}
+Increasing weight decay $\lambda$ is the standard way to force the model to
+generalise: it penalises large norms, preventing the model from storing all
+training pairs directly in the weights.
+
+% ============================================================
+\section{Diagonal spectral mass $M_{\diag}$}
+\label{sec:mdiag}
+% ============================================================
+
+\subsection{Why the pair lattice $\Zp^2$?}
+
+The Fibonacci rule depends only on the two most recent tokens, so the
+sufficient state is the pair $(a,b)\in\Zp^2$.
+After grokking the model must have learned a function on this
+$p\times p$ torus.
+We expose it by building, for every $(a,b)$, a valid probe sequence ending
+in $(a,b)$ and collecting the model's final-position logits:
+\begin{equation}
+    L_\theta[a,b,c] = \ell_\theta(c \mid \text{sequence ending in }(a,b)).
+\end{equation}
+
+\subsection{Centered logits and the structure factor}
+
+Softmax is gauge-invariant: adding the same constant to all class logits at
+$(a,b)$ does not change predictions.
+We therefore center:
+\begin{equation}
+    \tilde{L}[a,b,c]
+    = L[a,b,c] - \frac{1}{p}\sum_{c'} L[a,b,c'].
+\end{equation}
+The class-summed 2-D power spectrum is
+\begin{equation}
+    S(k,\ell) = \sum_{c=0}^{p-1}
+    \left|\widehat{\tilde{L}}(k,\ell;c)\right|^2,
+    \qquad (k,\ell)\in\Zp^2,
+\end{equation}
+where $\widehat{\cdot}$ denotes the 2-D discrete Fourier transform over
+$(a,b)$.
+
+\subsection{Why diagonal modes are special}
+
+The exact target rule is $c = a+b \pmod{p}$.
+Its Fourier decomposition is
+\begin{equation}
+    \mathbf{1}\{c=a+b\} = \frac{1}{p}\sum_{m=0}^{p-1}
+    e^{2\pi\ii m(a+b-c)/p}
+    = \frac{1}{p}\sum_{m=0}^{p-1}
+    e^{-2\pi\ii mc/p}\,
+    e^{2\pi\ii ma/p}\,
+    e^{2\pi\ii mb/p}.
+\end{equation}
+The dependence on $(a,b)$ lies entirely on modes $(k,\ell)=(m,m)$ --- the
+\emph{diagonal} of the 2-D frequency space.
+This is the algebraic reason that a grokked model should concentrate spectral
+power on the diagonal.
+
+\subsection{Definition}
+
+\begin{equation}
+    M_{\diag}(\theta)
+    = \frac{\displaystyle\sum_{m=1}^{p-1} S(m,m)}
+           {\displaystyle\sum_{(k,\ell)\neq(0,0)} S(k,\ell)}.
+    \label{eq:mdiag}
+\end{equation}
+$M_{\diag}\in[0,1]$.
+The DC mode $(0,0)$ is excluded from both numerator and denominator because it
+measures a uniform offset, not spatial structure.
+
+\subsection{Expected behaviour at grokking}
+
+\begin{itemize}
+    \item \textbf{Before grokking}: $M_{\diag}\approx 0$.
+    The spectrum is spread over all $(k,\ell)$ with no preference for the
+    diagonal; the model's output varies irregularly over the pair lattice.
+    \item \textbf{At the grokking transition}: $M_{\diag}$ rises sharply,
+    tracking the jump in validation accuracy.
+    \item \textbf{After grokking}: $M_{\diag}\to 1$.
+    Nearly all off-DC spectral power sits on diagonal modes; the model has
+    internalised the $a+b \pmod{p}$ structure.
+\end{itemize}
+
+\subsection{Counterfactual: memorisation without generalisation}
+
+When the model memorises the training set without learning the rule,
+the logit table $L[a,b,c]$ is effectively correct on training pairs and
+arbitrary on validation pairs.
+The 2-D FFT of a patchy function (correct on a random 30\% of entries,
+random on the rest) does \emph{not} concentrate on the diagonal: the
+``missing'' 70\% of the pair lattice contributes broad-spectrum noise that
+washes out the diagonal structure.
+Therefore $M_{\diag}$ remains near a small baseline value ($\sim 0.3 \times
+(\text{train fraction})^2$ at best, from spurious alignment of the trained
+entries).
+
+The key asymmetry: the diagonal structure in Eq.\,\eqref{eq:mdiag} requires
+the \emph{entire} pair lattice to be organised coherently according to the
+rule.
+Memorisation organises only the training subset, so $M_{\diag}$ stays low.
+
+% ------------------------------------------------------------
+\subsection{Derivation: spectral power scales as amplitude squared}
+\label{sec:amp2}
+% ------------------------------------------------------------
+
+Consider a \emph{single-frequency} approximation to the model's logit table,
+parameterised by frequency $f^*$ and (logit) amplitude $A$:
+\begin{equation}
+    L(a,b,c) \approx A\cos\!\left(\frac{2\pi f^*(a+b-c)}{p}\right).
+    \label{eq:single-freq-logit}
+\end{equation}
+Since the mean over $c$ vanishes (for $p$ prime and $f^*\neq 0$), the
+centered logit $\tilde{L}=L$.  Expanding the cosine,
+\begin{equation}
+    L(a,b,c)
+    = \frac{A}{2}\,e^{-2\pi\ii f^* c/p}\,
+         e^{2\pi\ii f^* a/p}\,e^{2\pi\ii f^* b/p}
+    + \mathrm{c.c.}
+\end{equation}
+Apply the 2-D DFT over $(a,b)$ with the convention
+$\widehat{L}(k,\ell;c) = p^{-1}\sum_{a,b}L(a,b,c)\,
+e^{-2\pi\ii(ka+\ell b)/p}$.
+Using the discrete orthogonality relation
+$p^{-1}\sum_{a}e^{2\pi\ii(f-k)a/p} = \delta_{k,f\bmod p}$, we obtain
+\begin{equation}
+    \widehat{L}(k,\ell;c)
+    = \frac{A}{2}\,e^{-2\pi\ii f^* c/p}\,\delta_{k,f^*}\,\delta_{\ell,f^*}
+    + \frac{A}{2}\,e^{+2\pi\ii f^* c/p}\,\delta_{k,p-f^*}\,\delta_{\ell,p-f^*}.
+\end{equation}
+The structure factor at the diagonal mode $(f^*,f^*)$ is then
+\begin{align}
+    S(f^*,f^*)
+    &= \sum_{c=0}^{p-1}\bigl|\widehat{L}(f^*,f^*;c)\bigr|^2
+     = \sum_{c=0}^{p-1}\left(\frac{A}{2}\right)^{\!2}
+     = \frac{p\,A^2}{4}.
+    \label{eq:Sff}
+\end{align}
+\textbf{Result:}
+\begin{equation}
+    \boxed{S(f^*,f^*) = \frac{p}{4}\,A_{f^*}^2.}
+    \label{eq:Sscales}
+\end{equation}
+For a model using $K$ frequencies $\{f^*_i\}$, the cross-terms vanish by
+orthogonality of distinct exponentials, so
+$S(f^*_i,f^*_i) = (p/4)\,A_{f^*_i}^2$ independently.
+The \emph{ratio} of diagonal powers equals the ratio of squared logit
+amplitudes:
+\begin{equation}
+    \frac{S(f^*_1,f^*_1)}{S(f^*_2,f^*_2)} = \frac{A_{f^*_1}^2}{A_{f^*_2}^2}.
+\end{equation}
+
+\paragraph{Connection to embedding amplitudes.}
+In the idealised grokked circuit (Nanda et al.\ \S4), the attention--MLP block
+bilinearly combines embedding vectors and the unembedding reads off the result,
+so the logit amplitude scales as $A_f \propto \bigl(A^{(W_E)}_f\bigr)^2$ and
+$S(f,f)\propto \bigl(A^{(W_E)}_f\bigr)^4$.
+In practice the quartic scaling is only approximate, but the embedding spectrum
+$A^{(W_E)}_f$ already gives a reliable ranking of which frequencies are active.
+
+% ------------------------------------------------------------
+\subsection{Why the weakest frequency is barely visible in $S(k,k)$}
+\label{sec:weak-freq}
+% ------------------------------------------------------------
+
+After grokking our model uses five frequencies with embedding amplitudes
+approximately
+$A_3\approx 2.35,\;A_7\approx 4.2,\;A_{14}\approx 4.0,\;
+ A_{18}\approx 4.1,\;A_{56}\approx 4.0$
+(indices for $p=113$; exact values are seed-dependent).
+By Eq.\,\eqref{eq:Sscales}, the diagonal power ratio of the weakest
+to the strongest frequency is
+\begin{equation}
+    \frac{S(3,3)}{S(7,7)}
+    \approx \left(\frac{A_3}{A_7}\right)^{\!2}
+    \approx \left(\frac{2.35}{4.2}\right)^{\!2}
+    \approx 0.31.
+\end{equation}
+The $k=3$ peak carries only $\sim 31\%$ of the power of the dominant peaks.
+
+\paragraph{Why this is less severe in the embedding spectrum.}
+The embedding spectrum $A(f)$ plots amplitudes linearly; the same ratio is
+$2.35/4.2 \approx 0.56$ --- a $56\%$ peak that is clearly visible.
+In $S(k,k)$ the ratio is \emph{squared} to $\approx 31\%$, pushing the
+$k=3$ bar much closer to the noise floor.  Plotting $S(k,k)$ on a
+\emph{log scale} is the standard remedy.
+
+\paragraph{Near-Nyquist merging.}
+At $p=113$ the mirror-image modes at $k=56$ and $k=57$ (both near the
+Nyquist point $p/2\approx 56.5$) are adjacent on the frequency axis.
+If their amplitudes are comparable they visually merge into one broad
+feature, further crowding the spectrum and obscuring the individual
+contributions.
+
+% ============================================================
+\section{Correlation length $\xi$ (Ornstein-Zernike estimator)}
+\label{sec:xi}
+% ============================================================
+
+\subsection{Intuition}
+
+$M_{\diag}$ tells us \emph{what fraction} of power is on the diagonal.
+It does not say \emph{how sharply} that power is concentrated around any
+particular mode.
+The correlation length $\xi$ captures the sharpness of the dominant spectral
+peak, and via the Ornstein-Zernike (OZ) analogy it tells us how spatially
+coherent the model's representation of the pair lattice is.
+
+\subsection{The Ornstein-Zernike form}
+
+Near a continuous phase transition the structure factor takes the form
+\begin{equation}
+    S(k) \approx \frac{A}{\xi^{-2} + |k - k^*|^2},
+\end{equation}
+where $k^*$ is the dominant ordering wavevector.
+In our setting $k^*$ lives on the diagonal.
+The peak height scales as $A\xi^2$ and the peak width (half-width at
+half-maximum) scales as $\xi^{-1}$.
+Therefore:
+\begin{itemize}
+    \item large $\xi$ $\Rightarrow$ tall, narrow peak $\Rightarrow$
+    long-range coherent order on the pair lattice,
+    \item small $\xi$ $\Rightarrow$ broad, low peak $\Rightarrow$
+    short-range or no order.
+\end{itemize}
+
+\subsection{Second-moment estimator on the torus}
+
+On a finite periodic lattice the lattice momenta are
+$k_\mu = 2\pi m_\mu / p$ with $m_\mu\in\Zp$.
+Using the OZ form and comparing the peak to its four nearest-momentum
+neighbours,
+\begin{equation}
+    \xi^2 \approx
+    \frac{1}{4\sin^2(\pi/p)}
+    \left(\frac{S(k^*)}{\overline{S}_{\mathrm{nn}}(k^*)} - 1\right),
+    \label{eq:xi}
+\end{equation}
+where $\overline{S}_{\mathrm{nn}}(k^*)$ is the mean of $S$ over the four
+nearest neighbours of $k^*$ on the torus.
+The factor $4\sin^2(\pi/p)$ replaces the continuum $|\delta k|^2 = (2\pi/p)^2$
+with the exact lattice dispersion.
+
+\subsection{Expected behaviour at grokking}
+
+\begin{itemize}
+    \item \textbf{Memorisation phase}: $\xi$ is small (order 1 in units of
+    the lattice spacing $1/p$) or even undefined if the dominant peak has no
+    clear nearest-neighbour structure.
+    \item \textbf{Grokking transition}: $\xi$ rises sharply.
+    \item \textbf{Post-grokking}: $\xi$ becomes comparable to the system size
+    $p$ (the pair lattice is fully coherent); the peak is as sharp as the
+    finite lattice allows.
+\end{itemize}
+Plotting $\xi(t)/p$ for several values of $p$ and looking for a common crossing
+is a standard finite-size-scaling test for a continuous transition.
+
+\subsection{Counterfactual: memorisation}
+
+In the memorisation phase the dominant non-DC peak need not even lie on the
+diagonal.
+Even if it does (because training pairs are a biased sample), the peak is
+broad: the off-diagonal noise from untrained pairs competes with it.
+Equation \eqref{eq:xi} then gives $S(k^*)/S_{\mathrm{nn}}\approx 1$ and
+$\xi\approx 0$.
+
+\paragraph{Joint signature.}
+A rising $M_{\diag}$ alone is weak evidence (it could come from a broad
+diagonal band).
+A simultaneously rising $\xi$ is much stronger: it means the spectral mass
+is condensing into a \emph{single narrow} diagonal peak, which is the
+hallmark of the model having learned one clean periodic structure.
+
+% ------------------------------------------------------------
+\subsection{First-principles derivation of the OZ structure factor}
+\label{sec:oz-deriv}
+% ------------------------------------------------------------
+
+\paragraph{Ginzburg-Landau setup.}
+Define the complex order parameter field
+$\phi: \Zp^2 \to \C$,
+\begin{equation}
+    \phi(a,b) = \sum_{c=0}^{p-1} \tilde{L}(a,b,c)\,e^{-2\pi\ii f^* c/p},
+\end{equation}
+i.e.\ the Fourier coefficient of the logit table at the target class
+frequency $f^*$.
+In the grokked phase $\phi(a,b) = A e^{2\pi\ii f^*(a+b)/p}$; in the
+disordered phase $\phi$ fluctuates without long-range coherence.
+
+Near the grokking transition (treating it as a continuous phase transition),
+expand the free-energy functional in $\phi$ to quadratic order --- the
+Ginzburg-Landau functional:
+\begin{equation}
+    \mathcal{F}[\phi]
+    = \sum_{(a,b)\in\Zp^2}
+    \Bigl[r\,|\phi(a,b)|^2
+         + \kappa\,|\nabla_{\mathrm{lat}}\phi(a,b)|^2
+         + \cdots\Bigr],
+    \label{eq:GL}
+\end{equation}
+where $r$ is the (reduced) distance to the transition ($r\propto
+\lambda - \lambda_c$ with $\lambda$ the weight decay), and
+$\nabla_{\mathrm{lat}}$ denotes the discrete lattice gradient.
+The Fourier-space representation of $\mathcal{F}$ is diagonal:
+\begin{equation}
+    \mathcal{F}[\phi]
+    = \sum_{(k,\ell)\in\Zp^2}
+    \bigl(r + \kappa\,\mu_{k,\ell}\bigr)\,|\tilde\phi(k,\ell)|^2,
+\end{equation}
+where $\mu_{k,\ell}$ is the eigenvalue of the lattice Laplacian
+$(-\Delta_{\mathrm{lat}})$.
+
+\paragraph{Lattice Laplacian eigenvalue.}
+On $\Zp^2$ with periodic boundary conditions the Laplacian acts as
+$(-\Delta_{\mathrm{lat}})f = 4f - (\text{four neighbours of }f)$.
+Its Fourier eigenvalue at wavevector $(k,\ell)$ is
+\begin{equation}
+    \mu_{k,\ell}
+    = 4 - 2\cos\!\tfrac{2\pi k}{p} - 2\cos\!\tfrac{2\pi\ell}{p}
+    = 4\sin^2\!\tfrac{\pi k}{p} + 4\sin^2\!\tfrac{\pi\ell}{p},
+    \label{eq:dispersion}
+\end{equation}
+using $1-\cos\theta = 2\sin^2(\theta/2)$.
+
+\paragraph{Equipartition and the OZ propagator.}
+Treating $\mathcal{F}$ as defining a Boltzmann weight
+$e^{-\mathcal{F}}$, the Gaussian fluctuation theorem (equipartition) gives
+\begin{equation}
+    \bigl\langle|\tilde\phi(k,\ell)|^2\bigr\rangle
+    = \frac{1}{r + \kappa\,\mu_{k,\ell}}.
+\end{equation}
+The structure factor $S(k,\ell)\propto
+\langle|\tilde\phi(k,\ell)|^2\rangle$ takes the form
+\begin{equation}
+    S(k,\ell)
+    = \frac{A}{r/\kappa + \mu_{k,\ell}}
+    = \frac{A}{\xi^{-2}
+        + 4\sin^2\!\tfrac{\pi(k-f^*)}{p}
+        + 4\sin^2\!\tfrac{\pi(\ell-f^*)}{p}},
+    \label{eq:oz-lattice}
+\end{equation}
+where we shifted to modes relative to the dominant ordering wavevector
+$k^*=(\ell^*=f^*)$ and identified the (lattice) \emph{correlation length}
+\begin{equation}
+    \xi^2 = \kappa/r.
+\end{equation}
+Equation~\eqref{eq:oz-lattice} is the \textbf{lattice Ornstein-Zernike form}.
+In the continuum limit $\sin(\pi\delta k/p)\approx\pi\delta k/p$, so
+$\mu\approx|\delta\mathbf{k}|^2$ and we recover the familiar
+Lorentzian propagator
+\begin{equation}
+    S(k) \approx \frac{A}{\xi^{-2} + |\mathbf{k}-\mathbf{k}^*|^2}.
+\end{equation}
+
+\paragraph{Non-monotonic $\xi$ profile.}
+At the transition $r\to 0^+$, so $\xi\to\infty$ and the peak diverges
+(in the infinite-volume, mean-field limit).
+On a finite lattice of size $p$, $\xi$ saturates at $O(p)$ once the peak
+width reaches the minimum allowed by the Nyquist spacing $2\pi/p$.
+After the transition the model settles into the ordered phase with a fixed,
+large $\xi$.
+The observed non-monotonic profile (rising to a maximum near the grokking
+epoch, then gently decreasing) reflects: (i) the finite-size saturation
+during the rise; (ii) a slight broadening of the peak once all $K$
+frequencies reach comparable amplitudes and
+the single-peak approximation becomes less accurate.
+
+% ------------------------------------------------------------
+\subsection{Derivation of the second-moment correlation length estimator}
+\label{sec:xi-deriv}
+% ------------------------------------------------------------
+
+Starting from the lattice OZ form~\eqref{eq:oz-lattice}, evaluate $S$ at
+the dominant peak and at its nearest neighbours.
+
+\paragraph{At the peak $(k^*, k^*) = (f^*, f^*)$:}
+$\sin^2(0)=0$, so
+\begin{equation}
+    S_{\mathrm{peak}} \equiv S(k^*,\ell^*)
+    = \frac{A}{\xi^{-2}}.
+    \label{eq:Speak}
+\end{equation}
+
+\paragraph{At a nearest-neighbour $(k^*+1,\, k^*)$:}
+The two sine-squared terms contribute $4\sin^2(\pi/p)+0$, so
+\begin{equation}
+    S_{\mathrm{nn}}
+    \equiv S(k^*+1,\,k^*)
+    = \frac{A}{\xi^{-2} + 4\sin^2(\pi/p)}.
+    \label{eq:Snn}
+\end{equation}
+
+\paragraph{Solving for $\xi^2$:}
+Dividing Eq.\,\eqref{eq:Speak} by Eq.\,\eqref{eq:Snn},
+\begin{equation}
+    \frac{S_{\mathrm{peak}}}{S_{\mathrm{nn}}}
+    = 1 + \xi^2 \cdot 4\sin^2\!\tfrac{\pi}{p}.
+\end{equation}
+Rearranging:
+\begin{equation}
+    \boxed{
+    \xi^2 = \frac{1}{4\sin^2(\pi/p)}
+            \left(\frac{S_{\mathrm{peak}}}{\overline{S}_{\mathrm{nn}}} - 1\right),
+    }
+    \label{eq:xi-estimator}
+\end{equation}
+where in practice $\overline{S}_{\mathrm{nn}}$ is the mean over all four
+nearest neighbours $\{(k^*\pm 1, k^*),\, (k^*, k^*\pm 1)\}$ to reduce noise.
+This is the estimator implemented in \texttt{analysis.py}.
+
+\paragraph{Lattice vs continuum.}
+In the continuum limit $\sin(\pi/p)\approx\pi/p$, so the denominator
+approaches $4(\pi/p)^2=(2\pi/p)^2$, the squared momentum-lattice spacing.
+The lattice sine factor corrects for the non-linear dispersion
+relation~\eqref{eq:dispersion} and is important when $\xi$ is not much
+larger than a few lattice spacings (i.e.\ when $\xi \ll p/\pi$).
+
+% ============================================================
+\section{Token-embedding Fourier spectrum}
+\label{sec:emb}
+% ============================================================
+
+\subsection{Definition}
+
+Let $W_E\in\R^{p\times d}$ be the token-embedding matrix (row $k$ is the
+embedding of token $k$).
+Its 1-D discrete Fourier transform along the token axis is
+\begin{equation}
+    \hat{W}_E(f) = \frac{1}{\sqrt{p}}\sum_{k=0}^{p-1} W_E[k,\cdot]\,
+    e^{-2\pi\ii fk/p},
+    \qquad f=0,\dots,\lfloor p/2\rfloor.
+\end{equation}
+The per-frequency amplitude is the $\ell^2$-norm over embedding dimensions:
+\begin{equation}
+    A(f) = \left\|\hat{W}_E(f)\right\|_2
+    = \left(\sum_{j=1}^{d}|\hat{W}_{E,j}(f)|^2\right)^{1/2}.
+\end{equation}
+
+\subsection{What it measures}
+
+$A(f)$ quantifies how much the embedding matrix ``uses'' frequency $f$.
+If token $k$ is embedded near $(\cos(2\pi f k/p),\,\sin(2\pi f k/p),\dots)$
+for some direction in $\R^d$, then $A(f)$ will be large.
+A flat spectrum $A(f)\approx\text{const}$ means tokens are embedded without
+any periodic structure.
+
+\subsection{Expected behaviour at grokking}
+
+Nanda et al.\ show that after grokking the embedding concentrates at a small
+number of \emph{key frequencies} $f^*$.
+Concretely, a grokked model embeds token $k$ as
+\begin{equation}
+    W_E[k,:] \approx \sum_{f\in\mathcal{F}} \alpha_f \cos(2\pi f k/p)\,u_f
+    + \beta_f \sin(2\pi f k/p)\,v_f,
+\end{equation}
+where $\mathcal{F}$ is a small set (typically 2--5 frequencies),
+$u_f,v_f\in\R^d$ are ``directions'' learned by the model, and
+$\alpha_f,\beta_f$ are scalar amplitudes.
+The Fourier spectrum $A(f)$ therefore shows a few sharp peaks above a low
+noise floor.
+
+\begin{itemize}
+    \item \textbf{Before grokking}: $A(f)$ is nearly flat (no preferred
+    frequencies; embeddings are arbitrary high-dimensional vectors adjusted
+    to memorise specific pairs).
+    \item \textbf{After grokking}: $A(f)$ has a small number of dominant
+    spikes.
+    The positions $f^*$ of these spikes are the same frequencies that
+    dominate the diagonal of $S(k,\ell)$.
+\end{itemize}
+
+\subsection{Counterfactual: memorisation}
+
+A model that has only memorised the training set does not need a periodic
+embedding: it just needs token $k$ to have a distinct representation.
+The embedding will therefore be spread across many Fourier modes (flat
+spectrum), reflecting no shared structure between tokens beyond their
+distinctness.
+
+\subsection{Relationship to $M_{\diag}$}
+
+The key frequencies $f^*$ appearing in the embedding are precisely the
+frequencies $m$ for which $S(m,m)$ is largest.
+Both metrics are measuring the same underlying phenomenon from different
+angles: $M_{\diag}$ asks ``does the output logit table use diagonal Fourier
+modes?'' while $A(f)$ asks ``does the input embedding use the corresponding
+Fourier basis?''
+
+% ============================================================
+\section{Trigonometric circle representation}
+\label{sec:trig}
+% ============================================================
+
+\subsection{The prediction mechanism (Nanda et al., §3)}
+
+Once the model has selected key frequencies $\mathcal{F}$, the prediction of
+$c = a+b\pmod{p}$ can be implemented almost linearly:
+\begin{align}
+    \cos(2\pi f c / p)
+    &= \cos(2\pi f a/p)\cos(2\pi f b/p) - \sin(2\pi f a/p)\sin(2\pi f b/p),\\
+    \sin(2\pi f c / p)
+    &= \sin(2\pi f a/p)\cos(2\pi f b/p) + \cos(2\pi f a/p)\sin(2\pi f b/p).
+\end{align}
+The attention and MLP layers effectively compute these trigonometric products
+and then the unembedding reads off the token whose trig components match the
+computed result.
+
+\subsection{The circle plot}
+
+For a given frequency $f$ we project $W_E[k,:]$ onto the cosine and sine
+basis vectors:
+\begin{align}
+    \phi^{(c)}_f[k] &= W_E[k,:]\cdot \hat{c}_f, \\
+    \phi^{(s)}_f[k] &= W_E[k,:]\cdot \hat{s}_f,
+\end{align}
+where $\hat{c}_f,\hat{s}_f\in\R^d$ are the normalised cosine and sine
+directions at frequency $f$ extracted from $\hat{W}_E(f)$.
+The scatter plot of $(\phi^{(c)}_f[k],\,\phi^{(s)}_f[k])$ for all
+$k=0,\dots,p-1$, coloured by $k$, should look like an \emph{evenly-spaced
+ring} if the model has internalised the trig structure.
+
+\subsection{Expected behaviour at grokking}
+
+\begin{itemize}
+    \item \textbf{Before grokking}: the scatter plot is a diffuse cloud with
+    no clear circular structure; points are arranged approximately randomly.
+    \item \textbf{After grokking}: points lie on a circle and are evenly
+    spaced modulo $p$ (i.e.\ token $k$ is at angle $2\pi fk/p$), with
+    colours cycling uniformly around the ring.
+    The radius of the ring is $|\alpha_f|$ (the amplitude of that frequency
+    in the embedding).
+\end{itemize}
+
+\subsection{Counterfactual: memorisation}
+
+A memorising model needs to distinguish all $p$ tokens but has no reason
+to arrange them periodically.
+The circle plot will show a diffuse cloud, or at best a ring whose angular
+positions are irregular (tokens are not at $2\pi fk/p$).
+Even if there happens to be some residual circular structure (perhaps from
+the random initialisation), the coloured sequence of tokens will \emph{not}
+cycle uniformly around the ring; adjacent-colour tokens will be scattered.
+
+% ============================================================
+\section{Joint interpretation: memorisation vs.\ grokking trajectory}
+\label{sec:joint}
+% ============================================================
+
+Table~\ref{tab:summary} summarises the expected state of each diagnostic
+at three stages of training.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lp{3.2cm}p{3.2cm}p{3.8cm}}
+\toprule
+Metric & Early (random) & Memorisation & Grokking (generalised) \\
+\midrule
+Train acc & $\approx 1/p$ & $\approx 100\%$ & $\approx 100\%$ \\
+Val acc   & $\approx 1/p$ & $\approx 1/p$  & $\approx 100\%$ \\
+$M_{\diag}$ & $\approx 0$ & small, noisy & rises sharply $\to 1$ \\
+$\xi$       & $\approx 0$ & $\approx 0$--1 & rises to $O(p)$ \\
+$A(f)$ spectrum & flat & flat & sharp peaks at $f^*$ \\
+Circle plot & diffuse cloud & diffuse / irregular ring & evenly-spaced ring \\
+\bottomrule
+\end{tabular}
+\caption{Summary of diagnostic behaviour at each stage.}
+\label{tab:summary}
+\end{table}
+
+\subsection{Why memorisation does not produce the spectral signatures}
+
+The core asymmetry is that \emph{the spectral metrics are computed over all
+$p^2$ states}, while the model has only seen 30\% of them during training.
+
+\begin{itemize}
+    \item The 2-D FFT over the full pair lattice requires all $p^2$ entries
+    to be organised coherently for $M_{\diag}$ to be close to 1.
+    A model that has fit the training pairs but outputs arbitrary values on
+    validation pairs produces a logit table $L[a,b,c]$ that is structured
+    on 30\% of the grid and noisy on 70\%.
+    The Fourier transform of such a function is dominated by the noise, and
+    $M_{\diag}$ remains small.
+
+    \item Similarly, $\xi$ measures the \emph{peak-to-neighbourhood ratio}
+    of $S(k,\ell)$.
+    Random off-diagonal power elevates the neighbourhood values, keeping the
+    ratio near 1 and $\xi$ near 0.
+
+    \item The embedding spectrum $A(f)$ and the circle plot are determined
+    by the token embedding $W_E$, which is trained on the full vocabulary
+    but must serve as input to the whole model.
+    During memorisation, $W_E$ is tuned to produce correct outputs on training
+    pairs; it is under no pressure to adopt a globally periodic structure.
+\end{itemize}
+
+\subsection{Why rising $M_{\diag}$ precedes or coincides with the val-acc jump}
+
+During training the model implicitly competes between two strategies:
+\begin{enumerate}[label=(\alph*)]
+    \item Store training pairs as a lookup table (memorisation).
+    \item Compress the task into the modular-addition rule using trigonometric
+    representations (generalisation).
+\end{enumerate}
+The spectral metrics detect strategy (b) directly.
+Weight decay penalises the large norms required to memorise many individual
+pairs, creating an implicit pressure toward the more weight-efficient
+(b) strategy.
+Once the model commits to (b), the internal representations reorganise
+simultaneously, causing $M_{\diag}$, $\xi$, the embedding spectrum, and
+val accuracy to jump together within a short training window.
+
+\subsection{What a slow $M_{\diag}$ rise means}
+
+If $M_{\diag}$ rises gradually rather than sharply, the model may be:
+\begin{enumerate}
+    \item transitioning slowly (crossover rather than sharp transition),
+    \item using multiple competing frequencies simultaneously
+    (slow ``frequency selection''),
+    \item partially generalising via a subset of the diagonal modes.
+\end{enumerate}
+Checking the structure-factor heatmap and the circle plots at intermediate
+checkpoints can distinguish these cases.
+
+% ============================================================
+\section{Practical monitoring recipe}
+\label{sec:recipe}
+% ============================================================
+
+During training, call \texttt{monitor\_spectral\_observables} every
+\texttt{monitor\_every} epochs.
+Record and plot:
+\begin{enumerate}
+    \item Training and validation loss / accuracy on log scale.
+    \item $M_{\diag}(t)$ and $\xi(t)$ vs.\ epoch.
+    \item The structure-factor heatmap $S(k,\ell)$ at selected checkpoints
+    (before, during, and after the suspected transition).
+    \item The embedding Fourier spectrum $A(f)$ at the same checkpoints.
+    \item Circle plots for the top-3 frequencies after training.
+\end{enumerate}
+
+\paragraph{Checkpoint selection heuristic.}
+The grokking epoch $t_g$ is usually where $dM_{\diag}/dt$ is maximum.
+Save full snapshots at $t = 0$, $t_g/2$, $t_g$, and $2t_g$.
+
+\paragraph{Finite-size scaling extension.}
+To test whether the transition sharpens with system size, repeat the
+experiment for several values of $p$ (e.g.\ $p\in\{17,31,59,97,113\}$)
+with the same training fraction and hyperparameters.
+Plot $\xi(t)/p$ for all $p$ on the same graph; a common crossing near $t_g$
+is evidence of a continuous transition with well-defined critical behaviour.
+
+% ============================================================
+\section{Weight decay: role, formulas, and effect of batch size}
+\label{sec:weightdecay}
+% ============================================================
+
+\subsection{Origin: L2 regularisation}
+
+The motivation for weight decay is to prevent overfitting by penalising large
+parameters.  One adds a regularisation term to the loss:
+\begin{equation}
+    \mathcal{L}_{\mathrm{reg}}(\theta)
+    = \mathcal{L}(\theta) + \frac{\lambda}{2}\|\theta\|^2.
+\end{equation}
+The gradient becomes $\nabla\mathcal{L}_{\mathrm{reg}} = \nabla\mathcal{L} +
+\lambda\theta$, and a plain SGD step gives
+\begin{equation}
+    \theta_{t+1}
+    = \theta_t - \eta\,\nabla\mathcal{L}_{\mathrm{reg}}
+    = (1-\eta\lambda)\,\theta_t - \eta\,\nabla\mathcal{L}.
+    \label{eq:sgd-wd}
+\end{equation}
+The factor $(1-\eta\lambda)$ is the \emph{per-step weight shrinkage}: every
+parameter is multiplied by a number slightly less than 1 before the gradient
+correction is added.  In the absence of gradient signal the weights decay
+exponentially toward zero --- hence the name \emph{weight decay}.
+
+\subsection{AdamW: decoupled weight decay}
+
+Standard Adam with L2 regularisation applies the penalty \emph{through} the
+adaptive gradient scaling, which corrupts the regularisation effect.
+AdamW~\citep{loshchilov2019} fixes this by applying weight decay directly to
+the parameters, bypassing Adam's $1/\sqrt{\hat{v}}$ rescaling.
+
+Let $g_t = \nabla_\theta\mathcal{L}$ be the loss gradient at step $t$.
+Define the first and second gradient moments as
+\begin{align}
+    m_t &= \beta_1 m_{t-1} + (1-\beta_1)\,g_t, \\
+    v_t &= \beta_2 v_{t-1} + (1-\beta_2)\,g_t^2,
+\end{align}
+with bias-corrected estimates
+$\hat{m}_t = m_t/(1-\beta_1^t)$ and $\hat{v}_t = v_t/(1-\beta_2^t)$.
+The AdamW parameter update is then
+\begin{equation}
+    \boxed{\theta_{t+1}
+    = (1-\eta\lambda)\,\theta_t
+    \;-\; \eta\,\frac{\hat{m}_t}{\sqrt{\hat{v}_t}+\varepsilon}.}
+    \label{eq:adamw}
+\end{equation}
+The weight-decay term $\eta\lambda\theta_t$ is additive and decoupled from
+the adaptive part: it shrinks every parameter by the same factor
+$(1-\eta\lambda)$ at every step, regardless of gradient magnitude or history.
+In PyTorch \texttt{AdamW} the parameter \texttt{weight\_decay} is exactly
+$\lambda$.
+
+\subsection{Per-epoch shrinkage and why batch size matters}
+
+Because weight decay is applied at \emph{every gradient step}, the number of
+steps per epoch is crucial.  With $N_{\mathrm{train}}$ training samples and
+batch size $B$, there are
+\begin{equation}
+    n_{\mathrm{steps}} = \left\lceil \frac{N_{\mathrm{train}}}{B} \right\rceil
+    \quad \text{steps per epoch.}
+\end{equation}
+After one epoch, the multiplicative shrinkage from weight decay alone ---
+ignoring the gradient term --- is
+\begin{equation}
+    \alpha_{\mathrm{epoch}}
+    = (1-\eta\lambda)^{n_{\mathrm{steps}}}
+    \approx e^{-\eta\lambda\, n_{\mathrm{steps}}},
+    \label{eq:epoch-shrink}
+\end{equation}
+where the approximation uses $\ln(1-x)\approx -x$ for small $x=\eta\lambda$.
+
+For our defaults ($\eta=10^{-3}$, $\lambda=0.1$, $N_{\mathrm{train}}\approx
+3828$, so $\eta\lambda=10^{-4}$):
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Batch size $B$ & Steps/epoch & $\alpha_{\mathrm{epoch}}$ & Decay per epoch \\
+\midrule
+3828 (full batch) & 1   & $0.9999^{1}   \approx 0.9999$ & $0.01\%$ \\
+1000              & 4   & $0.9999^{4}   \approx 0.9996$ & $0.04\%$ \\
+32                & 120 & $0.9999^{120} \approx 0.988$  & $1.2\%$  \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+With $B=32$ the weights are shrunk 30 times more aggressively per epoch than
+with $B=1000$, and 120 times more than with full-batch training.
+
+\subsection{Why this causes oscillations in the loss curve}
+
+The grokked solution lives at a specific point in weight space with specific
+trigonometric amplitudes in the embedding and MLP weights
+(see Section~\ref{sec:trig}).  Near that point the training loss is
+essentially zero, so the gradient is very small.  But weight decay is
+indifferent to the loss: it still shrinks every parameter by the same amount.
+
+The competition at each step is between two forces:
+\begin{equation}
+    \underbrace{\eta\,\frac{\hat{m}_t}{\sqrt{\hat{v}_t}+\varepsilon}}
+    _{\text{pulls toward grokked solution}}
+    \quad \text{vs.} \quad
+    \underbrace{\eta\lambda\,\theta_t}_{\text{pulls toward }0}.
+\end{equation}
+Near a loss minimum the gradient signal is weak.  With $B=32$ and 120
+steps per epoch, weight decay repeatedly wins: the trigonometric amplitudes
+erode, the model ``un-grokks'', and the loss spikes.  A large gradient then
+drives the model back toward the grokked solution, the loss crashes, and the
+cycle repeats.  This is the limit cycle visible in the loss curves when
+training with small batch size.
+
+With full-batch training the gradient at every step is computed from all
+$N_{\mathrm{train}}$ examples.  Even near the loss minimum it is large and
+unbiased enough to counteract weight decay at each step, so the grokked
+solution is stable and the curves are smooth.
+
+\subsection{Physical analogy}
+
+Think of weight decay as a restoring force (a spring) pulling $\theta$
+toward $0$, and the gradient descent step as a driving force toward the loss
+minimum.  The grokked fixed point is stable only when the driving force is
+stronger than the spring.  With mini-batches the driving force is noisy and
+weak near the minimum, so the spring intermittently wins and the system
+oscillates.
+
+This analogy also illuminates why weight decay is \emph{necessary} for
+grokking, not just harmful.  Without weight decay the memorisation basin
+(high-norm weights that encode each training pair individually) has no penalty
+and the model stays there indefinitely.  Weight decay provides the pressure
+that eventually forces a transition to the lower-norm grokked solution.  The
+challenge is tuning $\lambda$ and $B$ so that the spring is strong enough to
+favour the grokked solution over the memorised one, but not so strong that it
+destabilises the grokked solution once found.
+
+\subsection{Practical fixes}
+
+\paragraph{Full-batch training.}
+Set \texttt{batch\_size} $= N_{\mathrm{train}}$ (approximately 3828 for our
+default settings).  This is what Nanda et al.\ use and it completely
+eliminates the oscillations.
+
+\paragraph{Rescale weight decay with batch size.}
+To keep $\alpha_{\mathrm{epoch}}$ constant across batch sizes, set
+\begin{equation}
+    \lambda_{\mathrm{eff}} = \lambda \cdot \frac{B}{N_{\mathrm{train}}},
+\end{equation}
+so that the per-epoch shrinkage is $(1-\eta\lambda_{\mathrm{eff}})^{N_{\mathrm{train}}/B}
+= (1-\eta\lambda)^1$, matching the full-batch regime.
+
+\paragraph{Apply weight decay once per epoch.}
+One can decouple weight decay from the gradient step entirely by applying
+the shrinkage $\theta \leftarrow (1-\eta\lambda)\,\theta$ only once at the
+end of each epoch, regardless of how many mini-batches were processed.
+This is not standard in PyTorch but is straightforward to implement manually.
+
+\begin{thebibliography}{9}
+\bibitem{loshchilov2019}
+I.~Loshchilov and F.~Hutter,
+\textit{Decoupled Weight Decay Regularization},
+ICLR 2019.
+\bibitem{nanda2023}
+N.~Nanda, L.~Chan, T.~Lieberum, J.~Smith, J.~Steinhardt,
+\textit{Progress Measures for Grokking via Mechanistic Interpretability},
+ICLR 2023.
+\end{thebibliography}
+
+\end{document}

@@ -155,6 +155,29 @@ def structure_factor_from_logits(
 
 
 # ---------------------------------------------------------------------------
+# The Ginzburg-Landau idea: F(ψ)=αψ2+βψ4
+# β > 0 stops large ψ from going into -Inf and The sign of α\alpha
+# α flips depending on temperature
+# ∫[αψ2+βψ4+γ(∇ψ)2]dx  γ(∇ψ)2 term penalizes the order paramater changing too fast from one point to another
+# ---------------------------------------------------------------------------
+
+def ginzburg_first_principle(
+    model: torch.nn.Module,
+    n: int,
+    seq_len: int,
+    device: torch.device,
+    batch_size: int = 256,
+    eq_token: int = None,
+) -> None:
+    L  = collect_state_logits(model, n=n, seq_len=seq_len,
+                                   device=device, batch_size=batch_size,
+                                   eq_token=eq_token)
+    S, _, _ = structure_factor_from_logits(L)
+
+
+    return None
+
+# ---------------------------------------------------------------------------
 # Scalar order parameters
 # ---------------------------------------------------------------------------
 

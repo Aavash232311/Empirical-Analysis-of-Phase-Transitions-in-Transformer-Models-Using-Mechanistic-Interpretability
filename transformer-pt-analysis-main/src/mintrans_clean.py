@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 import matplotlib.pyplot as plt
+import matplotlib
 import numpy as np
 import torch
 import torch.nn as nn
@@ -61,7 +62,7 @@ class TrainConfig:
     batch_size: int = 1000
     lr: float = 1e-3
     weight_decay: float = 1  # drives grokking (see diagnostic_metrics.tex §7); LR decay controls oscillations
-    epochs: int = 15000
+    epochs: int = 7500
     train_frac: float = 0.3     # fraction of all p² pairs used for training
     monitor_every: int = 50     # epochs between spectral snapshots (0 = off)
     checkpoint_path: Optional[str] = None
@@ -507,32 +508,44 @@ def plot_embedding_trig_components(
             to identify dominant ones; skip DC at index 0)
     p     : if given, only the first p rows of W_E are used (excludes "=" token)
     """
-    W_E = model.token_embeddings().cpu().numpy()   # [vocab_size, d]
+    W_E = model.token_embeddings().cpu().numpy()   # [vocab_size, d_model]
     if p is not None:
         W_E = W_E[:p]
     p   = W_E.shape[0]
     k   = np.arange(p)
+
+    # W_E[a, :] ≈ ρ · cos(2πfa/p) · u_f + ρ · sin(2πfa/p) · v_f
+    # W_E[b, :] ≈ ρ · cos(2πfb/p) · u_f + ρ · sin(2πfb/p) · v_f
 
     cos_vec = np.cos(2 * np.pi * freq * k / p)
     sin_vec = np.sin(2 * np.pi * freq * k / p)
     cos_vec /= np.linalg.norm(cos_vec)
     sin_vec /= np.linalg.norm(sin_vec)
 
-    cos_proj = W_E @ cos_vec
-    sin_proj = W_E @ sin_vec
+    u = cos_vec @ W_E    # [d_model] u_f
+    v = sin_vec @ W_E    # [d_model] v_f
+    
+    # norm
+    u /= np.linalg.norm(u)
+    v /= np.linalg.norm(v)
+
+
+    cos_proj = W_E @ u   # [p]
+    sin_proj = W_E @ v   # [p]
+
+    r = np.hypot(cos_proj, sin_proj).mean()
 
     fig, ax = plt.subplots(figsize=(5, 5))
     sc = ax.scatter(cos_proj, sin_proj, c=k, cmap="hsv", s=30, zorder=3)
-    r  = np.hypot(cos_proj, sin_proj).mean()
     th = np.linspace(0, 2 * np.pi, 300)
     ax.plot(r * np.cos(th), r * np.sin(th), "k--", lw=0.8, alpha=0.4)
-
     plt.colorbar(sc, ax=ax, label="token index k")
     ax.set_aspect("equal")
     ax.set_xlabel(f"projection onto cos(2π·{freq}·k/p)")
     ax.set_ylabel(f"projection onto sin(2π·{freq}·k/p)")
     ax.set_title(f"Token embeddings — frequency {freq}")
-    plt.tight_layout(); plt.show()
+    plt.tight_layout()
+    plt.show()
 
 
 def plot_logit_structure_factor(model: MinimalTransformer, cfg: TrainConfig) -> None:
@@ -664,6 +677,9 @@ if __name__ == "__main__":
     val_loss, val_acc     = evaluate(model, val_loader)
     train_loss, train_acc = evaluate(model, train_loader)
     print(f"\nFinal — train acc: {train_acc:.3f}  val acc: {val_acc:.3f}")
+
+
+    matplotlib.use('TkAgg')
 
     plot_training_curves(history, title=f"p={cfg.p}, d={cfg.d_model}")
     plot_spectral_history(history)

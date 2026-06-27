@@ -3,13 +3,8 @@ from __future__ import annotations
 
 import math
 import torch
+import numpy as np
 
-"""
-Why would we want to do a DFT over c-axis (output)
-
-The model will learn to use the trig identity instead of using the lookup table.
-
-"""
 
 def phi_field(L: torch.Tensor, f_star: int) -> torch.Tensor:
     """
@@ -34,3 +29,10 @@ def phi_field(L: torch.Tensor, f_star: int) -> torch.Tensor:
     phi = (L_centered.to(torch.complex64) * phase).sum(dim=-1)      # [p, p], complex
     return phi
 
+
+# ---------------------------------------------------------------------------
+# The Ginzburg-Landau idea: F(ψ)=αψ2+βψ4
+# β > 0 stops large ψ from going into -Inf and The sign of α\alpha
+# α flips depending on temperature
+# ∫[αψ2+βψ4+γ(∇ψ)2]dx  γ(∇ψ)2 term penalizes the order paramater changing too fast from one point to another
+# ---------------------------------------------------------------------------

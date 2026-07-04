@@ -158,8 +158,7 @@ def structure_factor_from_logits(
 # ---------------------------------------------------------------------------
 
 def oz_sf(
-    L: torch.Tensor,
-    f_star: int
+    L: torch.Tensor
 ):
     """
     Compute the OZ structure factor S(k) at a single target class-frequency f*,
@@ -180,6 +179,15 @@ def oz_sf(
     assert L.shape == (n, n, n)
 
     L_centered = L - L.mean(dim=-1, keepdim=True)
+
+    '''
+    For every (a,b) pair, run a DFT across all 113 possible frequencies 
+    to get a power value at each frequency; then add up each frequency's power
+    across all pairs, and whichever frequency has the biggest total is the winner (f*) 
+    '''
+    F_full = torch.fft.fft(L_centered, dim=-1, norm="ortho")
+    power_per_f = F_full.abs().pow(2).sum(dim=(0,1))
+    f_star = int(power_per_f.argmax())
 
     # pick out the single target frequency f* along the class axis c 
     # phi(a,b) = sum_c L_centered(a,b,c) * exp(-2*pi*i*f*_star*c/n)

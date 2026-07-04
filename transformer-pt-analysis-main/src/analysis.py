@@ -153,6 +153,49 @@ def structure_factor_from_logits(
     S = F.abs().pow(2).sum(dim=-1)       # sum over class index c
     return S, L_centered, F
 
+# ---------------------------------------------------------------------------
+# OZ structure factor
+# ---------------------------------------------------------------------------
+
+def fft_lattice(
+    L: torch.Tensor,
+    f_star: int
+):
+    """
+    Compute the OZ structure factor S(k) at a single target class-frequency f*,
+    following eq. (18) of the grokking-transition paper.
+
+    L : logit table, shape (n, n, n) -> (a, b, c)
+        a, b index the input pair lattice (Z_p x Z_p)
+        c indexes the output class (also mod p)
+    f_star : the target class frequency to probe (int, 0 <= f_star < n)
+
+    Returns
+    -------
+    S       : (n, n) real tensor, the structure factor S(k1, k2)
+    phi     : (n, n) complex tensor, the real-space order-parameter field (eq. 18)
+    phi_hat : (n, n) complex tensor, the Fourier transform of phi (S = |phi_hat|^2)
+    """
+    n = L.shape[0]
+    assert L.shape == (n, n, n)
+
+    L_centered = L - L.mean(dim=-1, keepdim=True)
+
+    # pick out the single target frequency f* along the class axis c 
+    # phi(a,b) = sum_c L_centered(a,b,c) * exp(-2*pi*i*f*_star*c/n)
+    c = torch.arange(n, device=L.device, dtype=torch.float64)
+    kernel = torch.exp(-2j * torch.pi * f_star * c / n)          # shape (n,)
+    phi = torch.einsum( # for each (a, b) does the sum till p - 1
+        'abc,c->ab',
+        L_centered.to(kernel.dtype),
+        kernel
+    )                                                             # shape (n, n), complex
+
+    phi_hat = torch.fft.fft2(phi, norm="ortho")                   # shape (n, n), complex
+    S = phi_hat.abs().pow(2)                                      # S(k1, k2), real
+
+    return S, phi, phi_hat                           
+
 
 # ---------------------------------------------------------------------------
 # Scalar order parameters
@@ -227,10 +270,6 @@ def second_moment_correlation_length(S: torch.Tensor) -> dict:
         "S_peak":     S_peak,
         "S_nn_mean":  S_nn,
     }
-
-def binder_paramater():
-    pass
-
 
 # ---------------------------------------------------------------------------
 # One-call interface for training loops

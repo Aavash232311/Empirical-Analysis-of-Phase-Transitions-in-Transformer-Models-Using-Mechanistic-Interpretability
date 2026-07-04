@@ -157,7 +157,7 @@ def structure_factor_from_logits(
 # OZ structure factor
 # ---------------------------------------------------------------------------
 
-def fft_lattice(
+def oz_sf(
     L: torch.Tensor,
     f_star: int
 ):

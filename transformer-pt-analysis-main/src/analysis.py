@@ -191,16 +191,13 @@ def oz_sf(
 
     # pick out the single target frequency f* along the class axis c 
     # phi(a,b) = sum_c L_centered(a,b,c) * exp(-2*pi*i*f*_star*c/n)
-    c = torch.arange(n, device=L.device, dtype=torch.float64)
-    kernel = torch.exp(-2j * torch.pi * f_star * c / n)          # shape (n,)
-    phi = torch.einsum( # for each (a, b) does the sum till p - 1
-        'abc,c->ab',
-        L_centered.to(kernel.dtype),
-        kernel
-    )                                                             # shape (n, n), complex
+    phi = F_full[:, :, f_star] * (n ** 0.5)
 
-    phi_hat = torch.fft.fft2(phi, norm="ortho")                   # shape (n, n), complex
-    S = phi_hat.abs().pow(2)                                      # S(k1, k2), real
+    # 2D FFT of the order parameter
+    phi_hat = torch.fft.fft2(phi, norm="ortho")
+
+    # Structure factor
+    S = phi_hat.abs().pow(2)
 
     return S, phi, phi_hat                           
 

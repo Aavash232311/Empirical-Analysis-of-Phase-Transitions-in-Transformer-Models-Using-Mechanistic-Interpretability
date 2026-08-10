@@ -6,7 +6,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-''' The hyperparamaters in which we got perfect accuracy '''
+
 class FibonacciModDataset(Dataset):
     def __init__(self, seq_len=10, mod=10, num_samples=10000):
         self.mod = mod
@@ -150,7 +150,7 @@ if __name__ == "__main__":
         train_model(model, train_loader, epochs=200,test_loader=test_loader) 
         evaluate_model(model, test_loader, show_accuracy=True)
 
-        if not os.path.exists(checkpoint_dir): # if this does not exists for some reason then create one
+        if not os.path.exists(checkpoint_dir): # if this does not exist for some reason then create one
             os.makedirs(checkpoint_dir)
 
         torch.save(model.state_dict(), full_path) # save it right there

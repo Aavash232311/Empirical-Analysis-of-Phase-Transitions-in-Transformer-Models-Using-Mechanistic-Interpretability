@@ -199,7 +199,52 @@ def oz_sf(
     # Structure factor
     S = phi_hat.abs().pow(2)
 
-    return S, phi, phi_hat                           
+    return S, phi, phi_hat
+
+
+def gradient_lat(phi: torch.Tensor):
+    """
+    Compute the discrete lattice gradient of phi on a 2D grid.
+
+    Args:
+        phi: 2D tensor of shape [n, n] representing φ(a,b)
+
+    Returns:
+        grad_a: Gradient in the a-direction [n, n]
+        grad_b: Gradient in the b-direction [n, n]
+    """
+
+    grad_a = torch.zeros_like(phi)
+    grad_b = torch.zeros_like(phi)
+
+                    # phi(a + 1, b) - phi(a, b)
+    grad_a[:-1, :] = phi[1:, :] - phi[:-1, :] # row below - current row
+                    # phi(a, b + 1) - phi(a, b)
+    grad_b[:, :-1] = phi[:, 1:] - phi[:, :-1] # col + 1 - current col
+
+    return grad_a, grad_b
+
+
+def gl_energy(phi: torch.Tensor, r:int, kappa:int, u:int):
+    """
+    Compute the GL energy of phi on a 2D grid.
+
+    Args:
+        phi: 2D tensor of shape [n, n] representing φ(a,b)
+        r: constant
+        kappa: constant
+        u: constant
+
+    Returns:
+        energy: GL energy
+    """
+
+    grad_a, grad_b = gradient_lat(phi)
+    grad_sq = grad_a.abs().pow(2) + grad_b.abs().pow(2)
+
+    energy = (r * phi.abs().pow(2) + kappa * grad_sq + u * phi.abs().pow(4)).sum()
+    return energy
+
 
 
 # ---------------------------------------------------------------------------

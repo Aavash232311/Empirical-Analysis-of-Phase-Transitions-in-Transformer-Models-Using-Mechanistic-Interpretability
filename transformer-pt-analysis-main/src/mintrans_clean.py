@@ -24,7 +24,7 @@ intermediate pairs within a validation sequence may coincide with training pairs
 (because the Fibonacci orbit chains pairs together), but the final prediction
 task is always held out.
 """
-
+import os
 import math
 import random
 import time
@@ -686,3 +686,47 @@ if __name__ == "__main__":
 
     if cfg.checkpoint_path:
         save_checkpoint(model, history, cfg.checkpoint_path)
+
+
+
+def plot_xi_max_scaling(xi_max_by_p):
+    """
+    Plot xi_max(p)/p against p.
+    - Converges to a constant -> continuous transition (xi_max ~ p)
+    - -> 0 as p grows -> first-order transition (xi_max stays finite)
+    """
+    p_values = sorted(xi_max_by_p.keys())
+    p_arr = np.array(p_values, dtype=float)
+    xi_max_arr = np.array([xi_max_by_p[p] for p in p_values], dtype=float)
+
+    ratio = xi_max_arr / p_arr   # xi_max(p) / p
+
+    print("\n--- xi_max / p summary ---")
+    for p, xi_max, r in zip(p_values, xi_max_arr, ratio):
+        print(f"p={p:4d}  xi_max={xi_max:10.2f}  xi_max/p={r:.4f}")
+
+    plt.figure(figsize=(7,5))
+    plt.plot(p_arr, ratio, 'o-', color='tab:purple', markersize=8)
+    plt.xlabel('p')
+    plt.ylabel(r'$\xi_{max}(p) / p$')
+    plt.title(r'Peak correlation length scaling: $\xi_{max}/p$ vs $p$'
+              '\n(constant → continuous, →0 → first-order)')
+    plt.axhline(ratio[-1], color='gray', ls='--', alpha=0.5,
+                label=f'last point value ≈ {ratio[-1]:.3f}')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("xi_max_over_p_vs_p.png", dpi=150)
+    plt.show()
+
+    # simple slope check in log-log, for reference
+    log_p, log_ratio = np.log(p_arr), np.log(ratio)
+    slope, intercept = np.polyfit(log_p, log_ratio, 1)
+    print(f"\nlog-log slope of (xi_max/p) vs p: {slope:.3f}")
+    if slope < -0.1:
+        print("-> ratio is DECREASING with p: consistent with first-order (xi_max saturates)")
+    elif abs(slope) <= 0.1:
+        print("-> ratio roughly CONSTANT with p: consistent with continuous transition (xi_max ~ p)")
+    else:
+        print("-> ratio INCREASING with p: xi_max growing faster than p (unusual, worth double-checking)")
+
+    return p_arr, xi_max_arr, ratio

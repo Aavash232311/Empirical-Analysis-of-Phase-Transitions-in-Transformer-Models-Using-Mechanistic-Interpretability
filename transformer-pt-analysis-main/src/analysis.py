@@ -370,3 +370,22 @@ def monitor_spectral_observables(
         "S_peak":                 xi_info["S_peak"].item(),
         "S_nn_mean":              xi_info["S_nn_mean"].item(),
     }
+
+# ---------------------------------------------------------------------------
+# LOGISTIC FUNCTION
+# ---------------------------------------------------------------------------
+
+def logistic(t, t_g, Delta_t):
+    import numpy as np
+    """
+    Logistic (sigmoid) function for fitting M_diag(t).
+    
+    Parameters:
+        t       : Time (epochs)
+        t_g     : Transition midpoint (where M = 0.5)
+        Delta_t : Transition width (controls steepness)
+    
+    Returns:
+        M_diag(t) = 1 / (1 + exp(-(t - t_g)/Delta_t))
+    """
+    return 1.0 / (1.0 + np.exp(-(t - t_g) / Delta_t))

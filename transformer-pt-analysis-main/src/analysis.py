@@ -409,9 +409,13 @@ def fit_one_run(epochs, diag_mass):
 
     p0 = [tg_guess, dt_guess, M0_guess, dM_guess]
 
+    
     popt, pcov = curve_fit(
         logistic, epochs, M, p0=p0, maxfev=20000
     )
+
+    # popt[-1] is the final dm s
+    # print(f"Popt from the curve_fit function: Final  {popt[-1]}")
     t_g, Delta_t, M0, dM = popt
     perr = np.sqrt(np.diag(pcov))
 

@@ -51,7 +51,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 @dataclass
 class TrainConfig:
     """All hyperparameters in one place for easy experimentation."""
-    p: int = 113                # prime modulus; Nanda et al. use 113
+    p: int = 149                # prime modulus; Nanda et al. use 113
     vocab_size: int = p+1       # p + 1: tokens 0..p-1 plus "=" at index p
     d_model: int = 128
     n_heads: int = 4

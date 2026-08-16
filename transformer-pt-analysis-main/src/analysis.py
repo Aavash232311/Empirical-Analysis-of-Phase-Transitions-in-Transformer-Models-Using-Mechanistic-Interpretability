@@ -420,3 +420,63 @@ def fit_one_run(epochs, diag_mass):
         t_g=t_g, Delta_t=abs(Delta_t), M0=M0, dM=dM, perr=perr,
         epochs=epochs, M=M, popt=popt
     )
+
+
+def summary_finite_size_scaling(
+        p_values: list,
+        all_results: list
+):
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    summary_by_p = {}
+    for p in p_values:
+        seed_results = [r for r in all_results if r['p'] == p]
+
+        t_g_vals     = np.array([r['t_g'] for r in seed_results])
+        Delta_t_vals = np.array([r['Delta_t'] for r in seed_results])
+        norm_width   = Delta_t_vals / t_g_vals    # dt/t_g per norm transitional field
+
+        summary_by_p[p] = dict(
+            norm_width_mean = norm_width.mean(),
+            norm_width_std  = norm_width.std(),
+            n_seeds         = len(seed_results),
+        )
+        print(f"p={p:4d}  n_seeds={len(seed_results):2d}  "
+            f"Delta_t/t_g = {norm_width.mean():.4f} ± {norm_width.std():.4f}")
+
+
+    p_arr      = np.array(p_values)
+    width_mean = np.array([summary_by_p[p]['norm_width_mean'] for p in p_values])
+    width_std  = np.array([summary_by_p[p]['norm_width_std']  for p in p_values])
+
+    log_p, log_width = np.log(p_arr), np.log(width_mean)
+    slope, intercept = np.polyfit(log_p, log_width, 1)
+    nu = -1.0 / slope if slope != 0 else np.inf
+
+    print(f"\nslope = {slope:.3f}   implied nu = {nu:.3f}")
+    if slope < -0.05:
+        print("-> Delta_t/t_g decreases with p: consistent with continuous transition")
+    elif abs(slope) <= 0.05:
+        print("-> Delta_t/t_g roughly constant in p: supports first-order character")
+    else:
+        print("-> Delta_t/t_g increases with p: broader transitions at larger p")
+
+
+    plt.figure(figsize=(7,5))
+    plt.errorbar(p_arr, width_mean, yerr=width_std, fmt='o', capsize=4,
+                color='tab:blue', label='data (mean ± std over seeds)')
+
+    p_fine = np.linspace(p_arr.min(), p_arr.max(), 200)
+    plt.plot(p_fine, np.exp(intercept) * p_fine**slope, 'r--',
+            label=f'power-law fit: slope={slope:.2f} (ν≈{nu:.2f})')
+
+    plt.xscale('log'); plt.yscale('log')
+    plt.xlabel('p'); plt.ylabel(r'$\Delta t / t_g$')
+    plt.title('Transition sharpness vs p')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("width_vs_p_loglog.png", dpi=150)
+    plt.show()
+
+    return 

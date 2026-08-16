@@ -402,24 +402,21 @@ def fit_one_run(epochs, diag_mass):
     M = np.asarray(diag_mass, dtype=float)
 
     M0_guess = M[:5].mean()
-    Mmax_guess = M.max()
-    dM_guess = Mmax_guess - M0_guess
+    dM_guess = 1.0 - M0_guess
     tg_guess = epochs[np.argmin(np.abs(M - (M0_guess + dM_guess/2)))]
     dt_guess = (epochs[-1] - epochs[0]) / 20
 
     p0 = [tg_guess, dt_guess, M0_guess, dM_guess]
 
-    
-    popt, pcov = curve_fit(
-        logistic, epochs, M, p0=p0, maxfev=20000
-    )
-
-    # popt[-1] is the final dm s
-    # print(f"Popt from the curve_fit function: Final  {popt[-1]}")
+    popt, pcov = curve_fit(logistic, epochs, M, p0=p0, maxfev=20000)
     t_g, Delta_t, M0, dM = popt
     perr = np.sqrt(np.diag(pcov))
 
+    # sometimes this exceeds 1 not physcially possible in our case, so just clipping it to max 1.
+    dM = min(dM, 1.0)
+    M0 = max(M0, 0.0)
+
     return dict(
         t_g=t_g, Delta_t=abs(Delta_t), M0=M0, dM=dM, perr=perr,
-        epochs=epochs, M=M, popt=popt        
+        epochs=epochs, M=M, popt=popt
     )

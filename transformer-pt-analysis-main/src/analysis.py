@@ -375,17 +375,47 @@ def monitor_spectral_observables(
 # LOGISTIC FUNCTION
 # ---------------------------------------------------------------------------
 
-def logistic(t, t_g, Delta_t):
+def logistic(t, t_g, Delta_t, M0, dM):
     import numpy as np
     """
-    Logistic (sigmoid) function for fitting M_diag(t).
-    
-    Parameters:
-        t       : Time (epochs)
-        t_g     : Transition midpoint (where M = 0.5)
-        Delta_t : Transition width (controls steepness)
-    
-    Returns:
-        M_diag(t) = 1 / (1 + exp(-(t - t_g)/Delta_t))
+    M0  : baseline value (pre-transition plateau)
+    dM  : jump size how dramatic the pt really is
+    t_g : The time/epoch when M reaches 0.5.
+    Delta_t : width of transition
     """
-    return 1.0 / (1.0 + np.exp(-(t - t_g) / Delta_t))
+    return M0 + dM / (1.0 + np.exp(-(t - t_g) / Delta_t))
+
+
+
+def fit_one_run(epochs, diag_mass):
+
+    """
+    Returns required paramater for the logistic fit curve.
+
+    Returns: 
+    (t_g, delta_t, m0, epoch, M, parameter optimal, popt = [t_g, Delta_t, M0, dM])
+    """
+    import numpy as np
+    from scipy.optimize import curve_fit
+
+    epochs = np.asarray(epochs, dtype=float)
+    M = np.asarray(diag_mass, dtype=float)
+
+    M0_guess = M[:5].mean()
+    Mmax_guess = M.max()
+    dM_guess = Mmax_guess - M0_guess
+    tg_guess = epochs[np.argmin(np.abs(M - (M0_guess + dM_guess/2)))]
+    dt_guess = (epochs[-1] - epochs[0]) / 20
+
+    p0 = [tg_guess, dt_guess, M0_guess, dM_guess]
+
+    popt, pcov = curve_fit(
+        logistic, epochs, M, p0=p0, maxfev=20000
+    )
+    t_g, Delta_t, M0, dM = popt
+    perr = np.sqrt(np.diag(pcov))
+
+    return dict(
+        t_g=t_g, Delta_t=abs(Delta_t), M0=M0, dM=dM, perr=perr,
+        epochs=epochs, M=M, popt=popt        
+    )

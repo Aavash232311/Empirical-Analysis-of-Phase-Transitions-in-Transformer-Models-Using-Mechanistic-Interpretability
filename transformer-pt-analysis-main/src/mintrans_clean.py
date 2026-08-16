@@ -427,7 +427,7 @@ def plot_training_curves(history: Dict, title: str = "") -> None:
 # Visualisation: spectral monitoring over training
 # ---------------------------------------------------------------------------
 
-def plot_spectral_history(history: Dict) -> None:
+def plot_spectral_history(history: Dict, title: str = "Diagonal spectral mass during training") -> None:
     """Plot diagonal spectral mass and Ornstein–Zernike ξ from training history."""
     snaps = history.get("spectral", [])
     if not snaps:
@@ -440,7 +440,7 @@ def plot_spectral_history(history: Dict) -> None:
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
     ax1.plot(epochs, diag, marker="o")
     ax1.set_xlabel("epoch"); ax1.set_ylabel("diagonal spectral mass M_diag")
-    ax1.set_title("Diagonal spectral mass during training")
+    ax1.set_title(title)
 
     ax2.plot(epochs, xi, marker="o", color="tab:orange")
     ax2.set_xlabel("epoch"); ax2.set_ylabel("correlation length ξ")

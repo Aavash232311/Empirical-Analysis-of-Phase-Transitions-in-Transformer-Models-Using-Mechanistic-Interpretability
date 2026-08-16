@@ -480,3 +480,53 @@ def summary_finite_size_scaling(
     plt.show()
 
     return 
+
+
+
+def collect_Mdiag_at_reference_epoch(all_results, t_ref=None):
+    """
+    all_results: list of fit-result dicts, each with 'epochs' and 'M' (raw arrays)
+                 from fit_one_run (same seed set, fixed p, lambda).
+    t_ref: reference epoch to snapshot M_diag at. If None, uses mean t_g across seeds.
+    """
+    import numpy as np
+    if t_ref is None:
+        t_g_vals = np.array([r['t_g'] for r in all_results])
+        t_ref = t_g_vals.mean()
+
+    M_at_tref = []
+    for r in all_results:
+        epochs = r['epochs']
+        M = r['M']
+        # find the closest recorded epoch to t_ref, read off M there
+        idx = np.argmin(np.abs(epochs - t_ref))
+        M_at_tref.append(M[idx])
+
+    M_at_tref = np.array(M_at_tref)
+    return M_at_tref, t_ref
+
+
+def plot_Mdiag_histogram(all_results, t_ref=None, bins=15):
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+    M_at_tref, t_ref_used = collect_Mdiag_at_reference_epoch(all_results, t_ref)
+
+    print(f"Reference epoch t_ref = {t_ref_used:.1f}")
+    print(f"M_diag(t_ref) across {len(M_at_tref)} seeds:")
+    print(f"  values: {np.round(M_at_tref, 3)}")
+    print(f"  mean = {M_at_tref.mean():.3f}, std = {M_at_tref.std():.3f}")
+
+    plt.figure(figsize=(7,5))
+    plt.hist(M_at_tref, bins=bins, range=(0,1), color='tab:blue',
+              edgecolor='black', alpha=0.75)
+    plt.xlabel(r'$M_{diag}(t_{ref})$')
+    plt.ylabel('number of seeds')
+    plt.title(f'Distribution of order parameter at t_ref={t_ref_used:.0f}\n'
+              f'(unimodal → continuous, bimodal → first-order)')
+    plt.xlim(0, 1)
+    plt.tight_layout()
+    plt.savefig("Mdiag_at_tg_histogram.png", dpi=150)
+    plt.show()
+
+    return M_at_tref

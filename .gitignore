@@ -8,8 +8,7 @@ __pycache__/
 dist/
 build/
 
-# PyTorch checkpoints (large binary files)
-*.pth
+
 *.pt
 
 # LaTeX build artifacts

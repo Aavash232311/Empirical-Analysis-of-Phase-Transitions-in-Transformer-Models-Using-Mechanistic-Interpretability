@@ -523,7 +523,7 @@ def plot_Mdiag_histogram(all_results, t_ref=None, bins=15):
     plt.xlabel(r'$M_{diag}(t_{ref})$')
     plt.ylabel('number of seeds')
     plt.title(f'Distribution of order parameter at t_ref={t_ref_used:.0f}\n'
-              f'(unimodal → continuous, bimodal → first-order)')
+              f'(unimodal - continuous, bimodal → first-order)')
     plt.xlim(0, 1)
     plt.tight_layout()
     plt.savefig("Mdiag_at_tg_histogram.png", dpi=150)

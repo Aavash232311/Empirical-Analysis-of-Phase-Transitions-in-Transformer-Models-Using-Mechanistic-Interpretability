@@ -21,6 +21,8 @@ build/
 *.fls
 *.bbl
 *.blg
+*.png
+*.pth
 
 # macOS
 .DS_Store

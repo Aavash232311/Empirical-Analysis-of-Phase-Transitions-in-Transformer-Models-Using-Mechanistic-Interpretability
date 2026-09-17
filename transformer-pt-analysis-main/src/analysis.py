@@ -24,6 +24,7 @@ Public API
 from __future__ import annotations
 
 import math
+from typing import Dict, List, Tuple
 import torch
 
 # ---------------------------------------------------------------------------
@@ -530,3 +531,35 @@ def plot_Mdiag_histogram(all_results, t_ref=None, bins=15):
     plt.show()
 
     return M_at_tref
+
+def plot_training_curves_weight_decay(
+    runs: List[Tuple[float, Dict]],  # (weight_decay, history)
+    title: str = "",
+) -> None:
+    
+    import matplotlib.pyplot as plt
+    import matplotlib
+    import numpy as np
+
+    fig, (ax_loss, ax_acc) = plt.subplots(1, 2, figsize=(12, 4))
+    suffix = f" — {title}" if title else ""
+    colors = plt.cm.tab10(np.linspace(0, 0.9, len(runs)))
+
+    for (wd, history), color in zip(runs, colors):
+        epochs = range(1, len(history["train_loss"]) + 1)
+        label = f"wd={wd}"
+
+        ax_loss.semilogy(epochs, history["train_loss"], color=color, linestyle="--", label=f"{label} train")
+        ax_loss.semilogy(epochs, history["val_loss"],   color=color, linestyle="-",  label=f"{label} val")
+
+        ax_acc.plot(epochs, history["train_acc"], color=color, linestyle="--", label=f"{label} train")
+        ax_acc.plot(epochs, history["val_acc"],   color=color, linestyle="-",  label=f"{label} val")
+
+
+    ax_loss.set_xlabel("epoch"); ax_loss.set_ylabel("loss (log scale)")
+    ax_loss.set_title(f"Loss{suffix}"); ax_loss.legend(fontsize=7)
+
+    ax_acc.set_xlabel("epoch"); ax_acc.set_ylabel("accuracy")
+    ax_acc.set_title(f"Accuracy{suffix}"); ax_acc.legend(fontsize=7)
+
+    plt.tight_layout(); plt.show()

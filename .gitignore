@@ -35,5 +35,7 @@ build/
 venv/
 env/
 
+.idea/
+
 
 .vscode

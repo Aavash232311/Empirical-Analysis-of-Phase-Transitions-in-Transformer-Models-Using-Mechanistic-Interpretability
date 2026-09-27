@@ -51,10 +51,11 @@ class WangLandau:
         state_dict = self.skeleton_memorized['model_state_dict']
         self.theta_mem = torch.cat([p.flatten() for p in state_dict.values()]).detach().to(self.device)
 
-        d_mass, loss = wang.precompute_d_mass_landscape(50, 50, self.theta_grokked)
+        d_mass, loss, new_theta = wang.precompute_d_mass_landscape(10, 10, self.theta_grokked)
 
         d_mass.numpy().tofile(os.path.join(self.binary_d_mass_path, "grokked_diagonal_mass.bin"))
         loss.numpy().tofile(os.path.join(self.binary_d_mass_path, "grokked_loss.bin"))
+        new_theta.cpu().numpy().tofile(os.path.join(self.binary_d_mass_path, "nudged_theta.bin"))
 
     def _nudge_theta(self, parameters: torch.Tensor) -> torch.Tensor:
         mean = 0.0
@@ -102,10 +103,10 @@ class WangLandau:
                     m_diag = a.diagonal_spectral_mass(S)
 
             stream.synchronize()  # sync
-            return i, m_diag.item(), loss.item()
+            return i, m_diag.item(), loss.item(), new_theta
 
         with ThreadPoolExecutor(max_workers=num_threads) as pool:
-            for count, (i, val, loss) in enumerate(pool.map(worker, range(fc)), start=1):
+            for count, (i, val, loss, new_theta) in enumerate(pool.map(worker, range(fc)), start=1):
                 d_mass_list[i] = val
                 loss_list[i] = loss
                 if count % 25 == 0 or count == fc:
@@ -114,7 +115,7 @@ class WangLandau:
         end_time = time.perf_counter()
 
         print(f"Execution time: {(end_time - start_time) / 60:.2f} Minutes")
-        return d_mass_list, loss_list
+        return d_mass_list, loss_list, new_theta
 
 
 
@@ -123,42 +124,46 @@ class WangLandau:
 
         ''' WangLandau configurations '''
 
-        assert len(self.theta_grokked) > 0 and len(self.theta_mem) > 0
-
         n_bins = 30
 
         g = torch.zeros(n_bins)
         h = torch.ones(n_bins)
         f = math.e
 
-        theta_mem = self.theta_mem
-        theta_grokked = self.theta_grokked
+ 
+
+        # with open(os.path.join(self.binary_d_mass_path, "grokked_diagonal_mass.bin"), "rb") as f:
+        #     binary_data = f.read()
+
+
+        # d_mass_list = torch.frombuffer(binary_data, dtype=torch.float32)
+
 
         ''' This loss will be the diagonal spectral mass from the forward pass '''
-        def loss(w):
-            return (w - 3.0) ** 2
 
-        def bin_of(w, n_bins):
-            b = int(loss(w))
-            return max(0, min(b, n_bins - 1))
+        # def bin_of(n_bins, current_sweep, current_step):
+        #     b = int(d_mass_list[current_sweep * current_step])
+        #     return max(0, min(b, n_bins - 1))
 
 
-        rng = random.Random(12345)
+        # rng = random.Random(12345)
 
-        w = 0.0
-        x = bin_of(w, n_bins)
+        # w = 0.0
+        # x = bin_of(w, n_bins)
 
-        # Plane form I will make the modification later on.
-        for sweep in range(20):
-            for step in range(5000):
-                w_new = w + rng.gauss(0.0, 0.5)
-                x_new = bin_of(w_new, n_bins)
-                acc = min(1.0, math.exp(g[x] - g[x_new]))
-                if rng.random() < acc:
-                    w, x = w_new, x_new
-                g[x] += f
-                h[x] += 1
-            f /= 2.0
+        # # Plane form I will make the modification later on.
+        # for sweep in range(20):
+        #     for step in range(5000):
+
+
+        #         x_new = bin_of(n_bins, sweep, step)
+
+        #         acc = min(1.0, math.exp(g[x] - g[x_new]))
+        #         if rng.random() < acc:
+        #             w, x = w_new, x_new
+        #         g[x] += f
+        #         h[x] += 1
+        #     f /= 2.0
 
 wang = WangLandau("Skeletons/training_checkpoint.pth", "Skeletons/memorization_phase.pth")
 wang.load_model()

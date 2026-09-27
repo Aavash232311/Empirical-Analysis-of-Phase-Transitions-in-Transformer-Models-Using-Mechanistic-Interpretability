@@ -21,7 +21,13 @@ build/
 *.bbl
 *.blg
 *.png
+
+# Ignore all .pth files by default
 *.pth
+
+# Exception: Keep .pth files anywhere inside a Skeletons folder
+!**/Skeletons/**/*.pth
+!**/Skeletons/*.pth
 
 # macOS
 .DS_Store

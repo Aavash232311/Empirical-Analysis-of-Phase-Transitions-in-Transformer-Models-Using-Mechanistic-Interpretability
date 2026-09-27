@@ -8,7 +8,6 @@ __pycache__/
 dist/
 build/
 
-
 *.pt
 
 # LaTeX build artifacts
@@ -35,7 +34,8 @@ build/
 venv/
 env/
 
-.idea/
+# Editor / IDE configurations
+.vscode/
 
-
-.vscode
+# Binaries rule (explicitly track .bin files)
+!*.bin

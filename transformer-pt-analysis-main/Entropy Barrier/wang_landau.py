@@ -1,4 +1,5 @@
 import math
+import time
 import os.path
 import random
 import torch
@@ -50,7 +51,7 @@ class WangLandau:
         state_dict = self.skeleton_memorized['model_state_dict']
         self.theta_mem = torch.cat([p.flatten() for p in state_dict.values()]).detach().to(self.device)
 
-        d_mass, loss = wang.precompute_d_mass_landscape(10, 10, self.theta_grokked)
+        d_mass, loss = wang.precompute_d_mass_landscape(50, 50, self.theta_grokked)
 
         d_mass.numpy().tofile(os.path.join(self.binary_d_mass_path, "grokked_diagonal_mass.bin"))
         loss.numpy().tofile(os.path.join(self.binary_d_mass_path, "grokked_loss.bin"))
@@ -63,6 +64,7 @@ class WangLandau:
         return parameters + scalar_tensor
 
     def precompute_d_mass_landscape(self, sweeps: int, step: int, parameters, num_threads: int = 8):
+        start_time = time.perf_counter()
         fc = sweeps * step
         d_mass_list = torch.zeros(fc)
         loss_list = torch.zeros(fc)
@@ -106,9 +108,12 @@ class WangLandau:
             for count, (i, val, loss) in enumerate(pool.map(worker, range(fc)), start=1):
                 d_mass_list[i] = val
                 loss_list[i] = loss
-                if count % 50 == 0 or count == fc:
+                if count % 25 == 0 or count == fc:
                     print(f"[{count}/{fc}] Diagonal Spectral Mass: {val:.4f}")
 
+        end_time = time.perf_counter()
+
+        print(f"Execution time: {(end_time - start_time) / 60:.2f} Minutes")
         return d_mass_list, loss_list
 
 

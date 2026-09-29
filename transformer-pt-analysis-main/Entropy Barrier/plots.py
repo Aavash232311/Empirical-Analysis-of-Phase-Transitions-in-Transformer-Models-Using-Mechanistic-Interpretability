@@ -3,7 +3,7 @@ import torch
 import transformer as t
 
 
-path = os.path.join("Skeletons", "memorization_phase.pth")
+path = os.path.join("Skeletons", "training_checkpoint.pth")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 cfg = t.TrainConfig

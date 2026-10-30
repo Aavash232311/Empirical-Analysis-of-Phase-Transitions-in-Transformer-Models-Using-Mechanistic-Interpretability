@@ -9,6 +9,7 @@ from torch.nn.utils import vector_to_parameters, parameters_to_vector
 import analysis as a
 import transformer as t
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor
 
 
 class WangLandau:
@@ -74,7 +75,10 @@ class WangLandau:
             os.path.join(self.binary_d_mass_path, f"{tag}_nudged_theta.bin"))
 
 
-    def precompute_d_mass_landscape(self, sweeps: int, step: int, parameters, num_threads: int = 8):
+    def precompute_d_mass_landscape(self, sweeps: int, step: int, parameters, num_threads: int = 8, tag:str = None):
+
+        if tag is not None:
+            print(tag)
         start_time = time.perf_counter()
         fc = sweeps * step
         d_mass_list = torch.zeros(fc)
@@ -123,15 +127,30 @@ class WangLandau:
                 stream.synchronize()
             return i, m_diag.item(), loss.item(), (new_theta if i == fc - 1 else None)
 
+        with ThreadPoolExecutor(max_workers=num_threads) as pool:
+            for count, (i, val, loss, new_theta) in enumerate(pool.map(worker, range(fc)), start=1):
+                d_mass_list[i] = val
+                loss_list[i] = loss
+                if count % 25 == 0 or count == fc:
+                    print(f"[{count}/{fc}] Diagonal Spectral Mass: {val:.4f}")
+
+        end_time = time.perf_counter()
+
+        print(f"Execution time: {(end_time - start_time) / 60:.2f} Minutes")
+        return d_mass_list, loss_list, new_theta
+
+
+
         
 
     def compute_energy(self, sweeps: int, step: int):
         # We need to compute this for both memorization and generalization phase so we pass in the paramaters two times.
-        d_mass_grokked, loss_list_grokked, new_theta_grokked = self.precompute_d_mass_landscape(sweeps, step, self.theta_grokked)
-        d_mass_mem, loss_list_mem, new_theta_mem = self.precompute_d_mass_landscape(sweeps, step, self.theta_memorized)
+        d_mass_grokked, loss_list_grokked, new_theta_grokked = self.precompute_d_mass_landscape(sweeps, step, self.theta_grokked, "Computing grokked phase")
+        d_mass_mem, loss_list_mem, new_theta_mem = self.precompute_d_mass_landscape(sweeps, step, self.theta_memorized, "Computing memorization phase")
 
         self._save_precomputed_binary("grokked", d_mass_grokked, loss_list_grokked, new_theta_grokked)
         self._save_precomputed_binary("mem", d_mass_mem, loss_list_mem, new_theta_mem)
+        # we have something like for new theta, we have d_mass thats the energy 
 
     
 
@@ -153,4 +172,4 @@ class WangLandau:
 
 if __name__ == "__main__":
     wang = WangLandau("Skeletons/training_checkpoint.pth", "Skeletons/memorization_phase.pth")
-
+    wang.compute_energy(200, 50)

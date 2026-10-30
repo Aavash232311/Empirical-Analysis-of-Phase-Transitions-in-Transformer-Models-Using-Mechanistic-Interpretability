@@ -1,68 +1,78 @@
-import math
 import time
-import os.path
-import random
-import torch
+import contextlib
 import threading
+
+import os
+import torch
+from torch.nn.utils import vector_to_parameters, parameters_to_vector
+
 import analysis as a
 import transformer as t
-from torch.nn.utils import vector_to_parameters
-from concurrent.futures import ThreadPoolExecutor
+import numpy as np
 
-'''
-Trade off notes: There is a forward pass on a transformer after nudging the value of parameters
-by a small amount. Here the loss stays fixed and diagonal spectral mass stays changed.
 
-'''
 class WangLandau:
-    def __init__(self, skeleton_path_grokked: str, skeleton_path_memorized: str, binary_d_mass_path:str="Binary") -> None:
+
+    def __init__(
+        self,
+        skeleton_path_grokked: str,
+        skeleton_path_memorized: str,
+        save_path_sk: str = "Binary"
+
+    ) -> None:
         self.skeleton_path_grokked = skeleton_path_grokked
         self.skeleton_path_memorized = skeleton_path_memorized
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        self.cfg = t.TrainConfig
+
+        # Skeletons of grokked models
         self.skeletons_grokked = torch.load(self.skeleton_path_grokked, map_location=self.device)
         self.skeleton_memorized = torch.load(self.skeleton_path_memorized, map_location=self.device)
 
-        self.theta_grokked = []
-        self.theta_mem = []
+        # Paramaters of model, between two phases
+        state_dict = self.skeletons_grokked['model_state_dict']
+        self.theta_grokked = torch.cat([p.flatten() for p in state_dict.values()]).detach().to(self.device)
 
-        self.cfg = t.TrainConfig
+        state_dict = self.skeleton_memorized['model_state_dict']
+        self.theta_memorized = torch.cat([p.flatten() for p in state_dict.values()]).detach().to(self.device)
 
+
+        # Instance of transformer
         self.model = t.MinimalTransformer(
             vocab_size=self.cfg.vocab_size, d_model=self.cfg.d_model, n_heads=self.cfg.n_heads,
             num_layers=self.cfg.num_layers, max_seq_len=self.cfg.seq_len,
             hidden_mlp=self.cfg.hidden_mlp,
         ).to(self.device)
-
-        self.rng = torch.Generator()
-        self.rng.manual_seed(42)
-
-        self.binary_d_mass_path = binary_d_mass_path
-
-        if not os.path.exists(binary_d_mass_path):
-            os.makedirs(binary_d_mass_path)
+        self.model.eval()
 
 
-    def load_model(self):
-        state_dict = self.skeletons_grokked['model_state_dict']
-        self.theta_grokked = torch.cat([p.flatten() for p in state_dict.values()]).detach().to(self.device)
+        self.seed = 42
+        self.rng = torch.Generator(device=self.device)
+        self.rng.manual_seed(self.seed)
 
-        state_dict = self.skeleton_memorized['model_state_dict']
-        self.theta_mem = torch.cat([p.flatten() for p in state_dict.values()]).detach().to(self.device)
+        self.binary_d_mass_path = save_path_sk
 
-        d_mass, loss, new_theta = wang.precompute_d_mass_landscape(50, 50, self.theta_grokked)
 
-        d_mass.numpy().tofile(os.path.join(self.binary_d_mass_path, "grokked_diagonal_mass.bin"))
-        loss.numpy().tofile(os.path.join(self.binary_d_mass_path, "grokked_loss.bin"))
-        new_theta.cpu().numpy().tofile(os.path.join(self.binary_d_mass_path, "nudged_theta.bin"))
+    def _nudge_theta(self, parameters: torch.Tensor, rel_std: float = 0.05, min_scale: float = 1e-3,
+                    generator: torch.Generator = None) -> torch.Tensor:
+        generator = generator if generator is not None else self.rng
+        noise = torch.randn(parameters.shape, generator=generator,
+                            device=parameters.device, dtype=parameters.dtype)
+        scale = parameters.abs().clamp_min(min_scale)
+        return parameters + rel_std * scale * noise
 
-    def _nudge_theta(self, parameters: torch.Tensor) -> torch.Tensor:
-        mean = 0.0
-        std = 0.5
-        noise = mean + std * torch.randn_like(parameters)   
-        return parameters + noise
-    
+
+    def _save_precomputed_binary(self, tag: str, d_mass, loss, theta):
+         # float32 on disk, because wang_landau() reads with dtype=np.float32
+        d_mass.cpu().numpy().astype(np.float32).tofile(
+            os.path.join(self.binary_d_mass_path, f"{tag}_diagonal_mass.bin"))
+        loss.cpu().numpy().astype(np.float32).tofile(
+            os.path.join(self.binary_d_mass_path, f"{tag}_loss.bin"))
+        theta.detach().cpu().numpy().astype(np.float32).tofile(
+            os.path.join(self.binary_d_mass_path, f"{tag}_nudged_theta.bin"))
+
 
     def precompute_d_mass_landscape(self, sweeps: int, step: int, parameters, num_threads: int = 8):
         start_time = time.perf_counter()
@@ -71,113 +81,76 @@ class WangLandau:
         loss_list = torch.zeros(fc)
 
         thread_local = threading.local()
-        streams = [torch.cuda.Stream(device=self.device) for _ in range(num_threads)]
 
         def get_thread_model():
-            # each thread builds its own model ONCE, reused across all its assigned iterations
-            # careful this is where race condition can happen
             if not hasattr(thread_local, "model"):
-                thread_local.model = t.MinimalTransformer(
+                m = t.MinimalTransformer(
                     vocab_size=self.cfg.vocab_size, d_model=self.cfg.d_model, n_heads=self.cfg.n_heads,
                     num_layers=self.cfg.num_layers, max_seq_len=self.cfg.seq_len,
                     hidden_mlp=self.cfg.hidden_mlp,
                 ).to(self.device)
+                m.load_state_dict(self.skeletons_grokked['model_state_dict']) 
+                m.eval()                                                 
+                thread_local.model = m
             return thread_local.model
+
+        use_cuda = self.device.type == "cuda"
+        streams = [torch.cuda.Stream(device=self.device) for _ in range(num_threads)] if use_cuda else None
 
         def worker(i: int):
             model = get_thread_model()
-            stream = streams[i % num_threads]  # round-robin stream assignment
+            if use_cuda:
+                stream = streams[i % num_threads]
+                stream.wait_stream(torch.cuda.current_stream(self.device))
+                ctx = torch.cuda.stream(stream)
+            else:
+                ctx = contextlib.nullcontext()
 
-            new_theta = self._nudge_theta(parameters)
-            vector_to_parameters(new_theta, model.parameters())
-
-            with torch.cuda.stream(stream):
+            with ctx:
                 with torch.no_grad():
-
+                    gen = torch.Generator(device=self.device)
+                    gen.manual_seed(self.seed + i)
+                    new_theta = self._nudge_theta(parameters, generator=gen)
+                    vector_to_parameters(new_theta, model.parameters())
                     L, loss = a.collect_state_logits(
                         model=model, n=self.cfg.p, device=self.device,
                         batch_size=self.cfg.batch_size, eq_token=self.cfg.p,
-                        seq_len=self.cfg.seq_len
-                    )
+                        seq_len=self.cfg.seq_len)
                     S, _, _ = a.structure_factor_from_logits(L)
                     m_diag = a.diagonal_spectral_mass(S)
 
-            stream.synchronize()  # sync
-            return i, m_diag.item(), loss.item(), new_theta
+            if use_cuda:
+                stream.synchronize()
+            return i, m_diag.item(), loss.item(), (new_theta if i == fc - 1 else None)
 
-        with ThreadPoolExecutor(max_workers=num_threads) as pool:
-            for count, (i, val, loss, new_theta) in enumerate(pool.map(worker, range(fc)), start=1):
-                d_mass_list[i] = val
-                loss_list[i] = loss
-                if count % 25 == 0 or count == fc:
-                    print(f"[{count}/{fc}] Diagonal Spectral Mass: {val:.4f}")
+        
 
-        end_time = time.perf_counter()
+    def compute_energy(self, sweeps: int, step: int):
+        # We need to compute this for both memorization and generalization phase so we pass in the paramaters two times.
+        d_mass_grokked, loss_list_grokked, new_theta_grokked = self.precompute_d_mass_landscape(sweeps, step, self.theta_grokked)
+        d_mass_mem, loss_list_mem, new_theta_mem = self.precompute_d_mass_landscape(sweeps, step, self.theta_memorized)
 
-        print(f"Execution time: {(end_time - start_time) / 60:.2f} Minutes")
-        return d_mass_list, loss_list, new_theta
+        self._save_precomputed_binary("grokked", d_mass_grokked, loss_list_grokked, new_theta_grokked)
+        self._save_precomputed_binary("mem", d_mass_mem, loss_list_mem, new_theta_mem)
 
+    
 
+    def inspectModels(
+            self 
+    ):
+        # Utility method to plot and inspect two phases 
 
+        history_grokked = self.skeletons_grokked['history']
 
-    def wang_landau(self):
+        t.plot_training_curves(history_grokked, title=f"p={self.cfg.p}, d={self.cfg.d_model} Grokked Model")
+        t.plot_spectral_history(history_grokked)
 
-        ''' WangLandau configurations '''
+        # for ungrokked model
+        history_ungrokked = self.skeleton_memorized['history']
+        
+        t.plot_training_curves(history_ungrokked, title=f"p={self.cfg.p}, d={self.cfg.d_model} Un-grokked Model")
+        t.plot_spectral_history(history_ungrokked)
 
-        n_bins = 2
+if __name__ == "__main__":
+    wang = WangLandau("Skeletons/training_checkpoint.pth", "Skeletons/memorization_phase.pth")
 
-        g = torch.zeros(n_bins)
-        h = torch.ones(n_bins)
-
-        x_star  = 0.04   
-        window = 1e-4 
-        sweeps = 50
-        steps_per_sweep = 50
-
-
-        mod_factor = math.e  
-
-        with open(os.path.join(self.binary_d_mass_path, "grokked_diagonal_mass.bin"), "rb") as fh:
-            d_mass_bin = fh.read()
-        with open(os.path.join(self.binary_d_mass_path, "nudged_theta.bin"), "rb") as fh:
-            nudged_theta_bin = fh.read()
-        with open(os.path.join(self.binary_d_mass_path, "grokked_loss.bin"), "rb") as fh:   
-            loss_bin = fh.read()
-
-        d_mass_list = torch.frombuffer(bytearray(d_mass_bin), dtype=torch.float32)
-        nudged_theta = torch.frombuffer(bytearray(nudged_theta_bin), dtype=torch.float32)
-        loss_list = torch.frombuffer(bytearray(loss_bin), dtype=torch.float32)
-
-        def bin_of(y_value: float, n_bins: int) -> int:
-            b = int(y_value * n_bins)          # scale [0,1] into n_bins buckets, THEN truncate
-            return max(0, min(b, n_bins - 1))
-
-        rng = random.Random(12345)
-        pool_size = d_mass_list.shape[0]
-
-        for sweep in range(sweeps):
-            for step in range(steps_per_sweep):
-                flat_step = sweep * steps_per_sweep + step
-
-                proposed_idx = (flat_step) % pool_size
-
-                # In the smae phase of loss in both the phases what is the diag-m we are only taking if we have certain range of loss.
-                # If CUDA, filter this outside the loop. Then thrink the iteration.
-                # here mg_diag is the energy domain
-
-                if abs(loss_list[proposed_idx].item() - x_star) > window:
-                    continue
-
-                y_new = d_mass_list[proposed_idx].item()
-                x_new = bin_of(y_new, n_bins)
-
-                acc = min(1.0, math.exp(g[x] - g[x_new]))
-                if rng.random() < acc:
-                    current_idx, x = proposed_idx, x_new
-
-                g[x] += mod_factor
-                h[x] += 1
-
-wang = WangLandau("Skeletons/training_checkpoint.pth", "Skeletons/memorization_phase.pth")
-# wang.load_model()
-wang.wang_landau()

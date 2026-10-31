@@ -8,6 +8,8 @@ import os
 import torch
 from torch.nn.utils import vector_to_parameters, parameters_to_vector
 
+import math
+import random
 import analysis as a
 import transformer as t
 import numpy as np
@@ -64,6 +66,9 @@ class WangLandau:
               f"free: {shutil.disk_usage(self.binary_d_mass_path).free / 1e9:.1f} GB | "
               f"n_params: {self.theta_grokked.numel()}")
 
+        self.step = None
+        self.sweeps = None
+
 
     def _nudge_theta(self, parameters: torch.Tensor, rel_std: float = 0.05, min_scale: float = 1e-3,
                     generator: torch.Generator = None) -> torch.Tensor:
@@ -73,6 +78,7 @@ class WangLandau:
         scale = parameters.abs().clamp_min(min_scale)
         return parameters + rel_std * scale * noise
 
+    
     def _save_precomputed_binary(self, tag: str, d_mass, loss, n_params: int):
         # float32 on disk, because wang_landau() reads with dtype=np.float32
         # The theta file is NOT written here: the workers already streamed it to disk.
@@ -206,8 +212,24 @@ class WangLandau:
         print(f"Execution time: {(time.perf_counter() - start_time) / 60:.2f} Minutes")
         return nudged_frame, loss_grid, None
 
-        
 
+
+    """compute_energy
+
+    Pre-computes the energy and returns the following tesnors.
+
+    Args:
+        sweeps: int
+        step: int
+        store_theta: bool (Stores paramaters)
+    Returns:
+        d_mass: (sweeps, step, 1)
+        loss:   (sweeps, step)
+        theta:   (sweeps, step, paramaters)
+    
+    Raises:
+        ValueError: If principal or rate is negative.
+    """
     def compute_energy(self, sweeps: int, step: int, store_theta: bool = True):
         # We need to compute this for both memorization and generalization phase so we pass in the paramaters two times.
         n_params = self.theta_grokked.numel()
@@ -262,18 +284,40 @@ class WangLandau:
         return d_mass, loss, theta
 
 
+    """inspect_loss_window
+
+    For inspection of saved tensors. Tensor can get really large in space.
+
+    Args:
+        None
+
+    Returns:
+        None
+    
+    Raises:
+        ValueError: If principal or rate is negative.
+    """
     def inspect_loss_window(self):
         x_star = 0.04
         window = 5e-2  # 0.05
 
         d_mass_grokked, loss_grokked, theta_grokked = self.load_tensors("grokked", load_theta=True)
         d_mass_mem, loss_mem, theta_mem = self.load_tensors("mem", load_theta=True)
+    
 
+    """inspectModels
 
+    For inspection
 
-        
+    Args:
+        None
 
-
+    Returns:
+        None
+    
+    Raises:
+        None
+    """
     def inspectModels(
             self 
     ):
@@ -290,8 +334,70 @@ class WangLandau:
         t.plot_training_curves(history_ungrokked, title=f"p={self.cfg.p}, d={self.cfg.d_model} Un-grokked Model")
         t.plot_spectral_history(history_ungrokked)
 
+    def wanglandau(self, tag: str, sweeps: int = 200, steps_per_sweep: int = 50,
+                x_star: float = 0.04, window: float = 5e-2, n_bins: int = 20,
+                flat: float = 0.8, ln_f_final: float = 1e-6, seed: int = 12345):
 
+        
+        d_mass, loss, _ = self.load_tensors(tag, load_theta=False)  
+        d_mass = d_mass.reshape(-1).cpu().numpy()    # flat, in sample order i
+        loss = loss.reshape(-1).cpu().numpy() # flat strip cont
 
+        # energy shell: only samples whose loss is close to x_star (like in the notes)
+        shell = np.flatnonzero(np.abs(loss - x_star) <= window)
+
+        print(f"{shell.size}/{loss.size} samples inside the loss shell")
+        if shell.size < 10 * n_bins:
+            raise ValueError(f"Only {shell.size} samples in the shell; need >= {10 * n_bins}. "
+                            "Widen `window` or change `x_star`.")
+
+        # bin edges come from the data, because the diagonal mass may sit in a very narrow range
+        m = d_mass[shell]
+
+        edges = np.linspace(m.min(), m.max(), n_bins + 1)
+        bins = np.clip(np.searchsorted(edges, m, side="right") - 1, 0, n_bins - 1)
+        counts = np.bincount(bins, minlength=n_bins)
+        present = np.flatnonzero(counts)             # bins that can actually be visited
+
+        if present.size < 2:
+            raise ValueError("All in-shell samples fall in one bin.")
+
+        ln_g = np.zeros(n_bins)                      # ln g(bin)
+        h = np.zeros(n_bins)                         # histogram
+        ln_f = 1.0                                   # modification factor, halved when h is flat
+        rng = random.Random(seed)
+
+        cur = rng.randrange(shell.size)              # current state = an index into the shell
+        x = int(bins[cur])
+
+        for sweep in range(sweeps):
+            for k in range(steps_per_sweep):
+                prop = rng.randrange(shell.size)     # uniform random proposal
+                x_new = int(bins[prop])
+
+                d = ln_g[x] - ln_g[x_new]            # ln[g(x) / g(x_new)] check asgains this ratio
+                if d >= 0.0 or rng.random() < math.exp(d):
+                    cur, x = prop, x_new
+
+                ln_g[x] += ln_f                      # update the CURRENT bin, accepted or not
+                h[x] += 1
+
+            hp = h[present]
+            if hp.min() >= flat * hp.mean():         # flat histogram: refine
+                ln_f *= 0.5
+                h[:] = 0
+                if ln_f < ln_f_final:
+                    break
+        else:
+            print(f"WARNING: not converged, ln f = {ln_f:.2e}. Increase sweeps.")
+
+        # normalise so that sum_b g_b = number of in-shell samples
+        ln_g[present] -= np.logaddexp.reduce(ln_g[present])
+        ln_g[present] += math.log(shell.size)
+        ln_g[counts == 0] = -np.inf
+        return edges, ln_g, counts                   # S(bin) = ln_g (k_B = 1)
+
+                
 
 if __name__ == "__main__":
     wang = WangLandau("Skeletons/training_checkpoint.pth", "Skeletons/memorization_phase.pth")
@@ -300,5 +406,6 @@ if __name__ == "__main__":
     if pre_compute_energy == "y":
         wang.compute_energy(200, 50)
 
-    wang.inspect_loss_window()
+    # wang.inspect_loss_window()
     # wang.inspectModels()
+    wang.wanglandau("grokked", 200, 50)

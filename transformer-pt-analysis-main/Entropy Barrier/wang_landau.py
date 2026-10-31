@@ -228,31 +228,49 @@ class WangLandau:
             sweeps, step, self.theta_memorized, tag="Computing memorization phase",
             save_name="mem" if store_theta else None)
         self._save_precomputed_binary("mem", d_mass_mem, loss_list_mem, n_params) # number of paramaters is the same here, we are capturing two phases of the same training.
-        # we have something like for new theta, we have d_mass thats the energy 
+        # we have something like for new theta, we have d_mass thats the energy
 
-    def _loadBin(self, name:str):
+    def _loadBin(self, name: str, shape=None, memmap: bool = False):
         pth = os.path.join(self.binary_d_mass_path, name)
+
+        # catches a stale file from a run with different sweeps/step/model size
+        if shape is not None:
+            expected = int(np.prod(shape)) * 4
+            actual = os.path.getsize(pth)
+            if actual != expected:
+                raise ValueError(f"{name}: file has {actual} bytes, shape {shape} needs {expected}")
+
+        if memmap:
+            # here we have to do lazy loading these tensor are huge in size.
+            return np.memmap(pth, dtype=np.float32, mode="r", shape=shape)
+
         data = np.fromfile(pth, dtype=np.float32)
-        tensor = torch.from_numpy(data).to(self.device)
-        return tensor
+        if shape is not None:
+            data = data.reshape(shape)
+        return torch.from_numpy(data).to(self.device)
+
+    def load_tensors(self, tag: str, load_theta: bool = False):
+        # tag is "grokked" or "mem"
+        with open(os.path.join(self.binary_d_mass_path, f"{tag}_shape.json")) as fh:
+            shp = json.load(fh)
+        sweeps, step, n_params = shp["sweeps"], shp["step"], shp["n_params"]
+
+        d_mass = self._loadBin(f"{tag}_diagonal_mass.bin", (sweeps, step, 1))
+        loss = self._loadBin(f"{tag}_loss.bin", (sweeps, step))
+        theta = (self._loadBin(f"{tag}_nudged_theta.bin", (sweeps, step, n_params), memmap=True)
+                if load_theta else None)
+        return d_mass, loss, theta
 
 
     def inspect_loss_window(self):
         x_star = 0.04
         window = 5e-2  # 0.05
 
-        loss = self._loadBin("mem_loss.bin")
+        d_mass_grokked, loss_grokked, theta_grokked = self.load_tensors("grokked", load_theta=True)
+        d_mass_mem, loss_mem, theta_mem = self.load_tensors("mem", load_theta=True)
 
-        mask = (loss - x_star).abs() < window
 
-        fil = loss[mask]
 
-        print("Filtered:", len(fil))
-        print("All True:", mask.all().item())
-        print("Min:", loss.min().item())
-        print("Max:", loss.max().item())
-
-        print(min(self.skeleton_memorized['history']['train_loss']))
         
 
 
@@ -282,5 +300,5 @@ if __name__ == "__main__":
     if pre_compute_energy == "y":
         wang.compute_energy(200, 50)
 
-    # wang.inspect_loss_window()
+    wang.inspect_loss_window()
     # wang.inspectModels()

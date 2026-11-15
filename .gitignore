@@ -45,3 +45,6 @@ env/
 
 # Binaries rule (explicitly track .bin files)
 !*.bin
+
+# Entropy sampling outputs
+entropy_runs/

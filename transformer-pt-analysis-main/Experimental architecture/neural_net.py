@@ -101,7 +101,7 @@ class TrainConfig:
     d_model: int = 64
     n_heads: int = 4               # unused in the FFN-only model (kept for interface compatibility)
     num_layers: int = 1
-    hidden_mlp: int = 256
+    hidden_mlp: int = 192
     seq_len: int = 3               # [a, b, =] — Nanda et al. format
     batch_size: int = 1000
     lr: float = 1e-3
@@ -114,7 +114,7 @@ class TrainConfig:
     # default Config (seed=0 for pair-split; torch seed is not fixed in his code
     # but 0 is a clean baseline for comparison).
     data_seed: int = 0             # seed for the train/val pair split
-    torch_seed: int = 0            # seed for model weight initialisation
+    torch_seed: int = 0            # seed for model weight initialization
 
 
 # ---------------------------------------------------------------------------

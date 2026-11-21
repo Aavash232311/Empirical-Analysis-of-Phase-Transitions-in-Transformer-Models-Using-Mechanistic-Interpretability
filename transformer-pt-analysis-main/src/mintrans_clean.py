@@ -668,24 +668,28 @@ if __name__ == "__main__":
         hidden_mlp=cfg.hidden_mlp,
     ).to(device)
 
-    try:
-        history = train_model(model, train_loader, val_loader, cfg)
-    except KeyboardInterrupt:
-        history = {k: [] for k in ("train_loss", "val_loss", "train_acc", "val_acc", "spectral")}
-
-    val_loss, val_acc     = evaluate(model, val_loader)
-    train_loss, train_acc = evaluate(model, train_loader)
-    print(f"\nFinal — train acc: {train_acc:.3f}  val acc: {val_acc:.3f}")
+    n_params = sum(p.numel() for p in model.parameters())
+    print(f"total parameters: {n_params:,}")
 
 
-    matplotlib.use('TkAgg')
-
-    plot_training_curves(history, title=f"p={cfg.p}, d={cfg.d_model}")
-    plot_spectral_history(history)
-    plot_trig_overview(model, cfg)
-
-    if cfg.checkpoint_path:
-        save_checkpoint(model, history, cfg.checkpoint_path)
+    # try:
+    #     history = train_model(model, train_loader, val_loader, cfg)
+    # except KeyboardInterrupt:
+    #     history = {k: [] for k in ("train_loss", "val_loss", "train_acc", "val_acc", "spectral")}
+    #
+    # val_loss, val_acc     = evaluate(model, val_loader)
+    # train_loss, train_acc = evaluate(model, train_loader)
+    # print(f"\nFinal — train acc: {train_acc:.3f}  val acc: {val_acc:.3f}")
+    #
+    #
+    # matplotlib.use('TkAgg')
+    #
+    # plot_training_curves(history, title=f"p={cfg.p}, d={cfg.d_model}")
+    # plot_spectral_history(history)
+    # plot_trig_overview(model, cfg)
+    #
+    # if cfg.checkpoint_path:
+    #     save_checkpoint(model, history, cfg.checkpoint_path)
 
 
 

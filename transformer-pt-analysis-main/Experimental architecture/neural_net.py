@@ -98,15 +98,15 @@ class TrainConfig:
     """All hyperparameters in one place for easy experimentation."""
     p: int = 149                   # prime modulus; Nanda et al. use 113
     vocab_size: int = p+1          # p + 1: tokens 0..p-1 plus "=" at index p
-    d_model: int = 128
+    d_model: int = 64
     n_heads: int = 4               # unused in the FFN-only model (kept for interface compatibility)
     num_layers: int = 1
-    hidden_mlp: int = 512
+    hidden_mlp: int = 256
     seq_len: int = 3               # [a, b, =] — Nanda et al. format
     batch_size: int = 1000
     lr: float = 1e-3
     weight_decay: float = 1        # drives grokking (see diagnostic_metrics.tex §7); LR decay controls oscillations
-    epochs: int = 7500
+    epochs: int = 12000
     train_frac: float = 0.3        # fraction of all p² pairs used for training
     monitor_every: int = 50        # epochs between spectral snapshots (0 = off)
     checkpoint_path: Optional[str] = None
@@ -730,6 +730,10 @@ if __name__ == "__main__":
         num_layers=cfg.num_layers, max_seq_len=cfg.seq_len,
         hidden_mlp=cfg.hidden_mlp,
     ).to(device)
+
+    n_params = sum(p.numel() for p in model.parameters())
+    print(f"total parameters: {n_params:,}")
+
 
     try:
         history = train_model(model, train_loader, val_loader, cfg)

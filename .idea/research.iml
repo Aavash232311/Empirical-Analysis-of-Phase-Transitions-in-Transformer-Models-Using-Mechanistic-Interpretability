@@ -5,6 +5,7 @@
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/transformer-pt-analysis-main/.venv" />
+      <excludeFolder url="file://$MODULE_DIR$/transformer-pt-analysis-main/Entropy Barrier/.venv" />
     </content>
     <orderEntry type="jdk" jdkName="~/Documents/research/.venv" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

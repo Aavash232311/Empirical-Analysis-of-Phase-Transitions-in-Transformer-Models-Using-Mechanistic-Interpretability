@@ -101,7 +101,7 @@ class TrainConfig:
     d_model: int = 64
     n_heads: int = 4               # unused in the FFN-only model (kept for interface compatibility)
     num_layers: int = 1
-    hidden_mlp: int = 128
+    hidden_mlp: int = 96
     seq_len: int = 3               # [a, b, =] — Nanda et al. format
     batch_size: int = 1000
     lr: float = 1e-3

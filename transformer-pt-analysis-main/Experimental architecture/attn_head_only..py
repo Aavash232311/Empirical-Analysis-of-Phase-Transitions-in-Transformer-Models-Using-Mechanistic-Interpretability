@@ -95,15 +95,15 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 @dataclass
 class TrainConfig:
     """All hyperparameters in one place for easy experimentation."""
-    p: int = 149                   # prime modulus; Nanda et al. use 113
+    p: int = 97                   # prime modulus; Nanda et al. use 113
     vocab_size: int = p+1          # p + 1: tokens 0..p-1 plus "=" at index p
-    d_model: int = 256
-    n_heads: int = 4
-    num_layers: int = 1
+    d_model: int = 128
+    n_heads: int = 16
+    num_layers: int = 2
     hidden_mlp: int = 512          # unused in the attention-only model (kept for interface compatibility)
     seq_len: int = 3               # [a, b, =] — Nanda et al. format
     batch_size: int = 1000
-    lr: float = 1e-3
+    lr: float = 1e-4
     weight_decay: float = 1        # drives grokking (see diagnostic_metrics.tex §7); LR decay controls oscillations
     epochs: int = 18000
     train_frac: float = 0.3        # fraction of all p² pairs used for training

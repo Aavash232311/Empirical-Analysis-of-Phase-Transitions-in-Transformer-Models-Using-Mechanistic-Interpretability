@@ -101,12 +101,12 @@ class TrainConfig:
     d_model: int = 64
     n_heads: int = 4               # unused in the FFN-only model (kept for interface compatibility)
     num_layers: int = 1
-    hidden_mlp: int = 48
+    hidden_mlp: int = 96
     seq_len: int = 3               # [a, b, =] — Nanda et al. format
     batch_size: int = 1000
     lr: float = 1e-3
     weight_decay: float = 1        # drives grokking (see diagnostic_metrics.tex §7); LR decay controls oscillations
-    epochs: int = 12000
+    epochs: int = 13500
     train_frac: float = 0.3        # fraction of all p² pairs used for training
     monitor_every: int = 50        # epochs between spectral snapshots (0 = off)
     checkpoint_path: Optional[str] = None

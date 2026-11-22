@@ -101,7 +101,7 @@ class TrainConfig:
     d_model: int = 64
     n_heads: int = 4               # unused in the FFN-only model (kept for interface compatibility)
     num_layers: int = 1
-    hidden_mlp: int = 96
+    hidden_mlp: int = 128
     seq_len: int = 3               # [a, b, =] — Nanda et al. format
     batch_size: int = 1000
     lr: float = 1e-3
@@ -109,7 +109,7 @@ class TrainConfig:
     epochs: int = 13500
     train_frac: float = 0.3        # fraction of all p² pairs used for training
     monitor_every: int = 50        # epochs between spectral snapshots (0 = off)
-    checkpoint_path: Optional[str] = None
+    checkpoint_path: Optional[str] = 'Checkpoints/large_ffn.pth'
     # Reproducibility: set data_seed=0 and torch_seed=0 to match Nanda et al.'s
     # default Config (seed=0 for pair-split; torch seed is not fixed in his code
     # but 0 is a clean baseline for comparison).

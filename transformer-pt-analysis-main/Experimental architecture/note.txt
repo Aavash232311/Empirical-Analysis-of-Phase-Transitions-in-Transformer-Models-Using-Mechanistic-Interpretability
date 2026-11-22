@@ -1,0 +1,11 @@
+### Research Notes: Attention-Head Capacity and Grokking
+
+Preliminary experimental observations suggest that attention-head capacity may influence the generalization behavior of neural networks trained on modular addition tasks.
+
+When the attention-head capacity is relatively low, the model exhibits conventional training behavior, with training and validation accuracy improving at approximately the same rate.
+
+However, as attention-head capacity increases, the model tends to exhibit grokking, where training accuracy reaches nearly 100% significantly earlier than validation accuracy. After additional training, validation accuracy improves rapidly, eventually approaching 100%.
+
+**Hypothesis:** Increasing attention-head capacity may encourage initial memorization of training examples, resulting in delayed generalization. Conversely, lower-capacity attention heads may encourage earlier learning of generalizable mathematical representations.
+
+Further experiments are required to determine whether this behavior is consistent across different model configurations, random seeds, and modular arithmetic tasks.

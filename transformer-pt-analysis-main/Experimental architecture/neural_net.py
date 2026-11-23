@@ -88,10 +88,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class TrainConfig:
     """All hyperparameters in one place for easy experimentation."""
     p: int = 149                   # prime modulus; Nanda et al. use 113
-    d_model: int = 32
+    d_model: int = 52
     n_heads: int = 4               # unused in the FFN-only model (kept for interface compatibility)
     num_layers: int = 1
-    hidden_mlp: int = 96
+    hidden_mlp: int = 64
     seq_len: int = 2               # [a, b] by default
     batch_size: int = 1000
     lr: float = 1e-3

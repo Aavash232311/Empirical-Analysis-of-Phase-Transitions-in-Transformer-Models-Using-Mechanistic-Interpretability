@@ -99,7 +99,7 @@ class TrainConfig:
     epochs: int = 13500
     train_frac: float = 0.3        # fraction of all p² pairs used for training
     monitor_every: int = 50        # epochs between spectral snapshots (0 = off)
-    checkpoint_path: Optional[str] = None
+    checkpoint_path: Optional[str] = "Checkpoints/25_gen.pth"
     # Reproducibility: set data_seed=0 and torch_seed=0 to match Nanda et al.'s
     # default Config (seed=0 for pair-split; torch seed is not fixed in his code
     # but 0 is a clean baseline for comparison).
